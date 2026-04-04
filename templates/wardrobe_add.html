@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Add Item — WardrobeIQ{% endblock %}
+{% block content %}
+<div style="max-width:640px;margin:0 auto;padding:60px 32px;">
+  <div class="chapter reveal" style="margin-bottom:14px;">
+    <span class="chapter-num">Add</span><div class="chapter-line"></div>
+  </div>
+  <h1 class="reveal reveal-delay-1" style="font-size:2.2rem;margin-bottom:28px;">
+    Add to your <em>wardrobe.</em>
+  </h1>
+  <div class="panel reveal reveal-delay-2">
+    <form method="POST" action="{{ url_for('wardrobe_add') }}">
+
+      <div class="form-group">
+        <label class="form-label">Item Name *</label>
+        <input class="form-input" type="text" name="item_name"
+               placeholder="e.g. Blue Denim Jacket" required>
+      </div>
+
+      <div class="form-row-2">
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <select class="form-select" name="category">
+            <option>Casual</option><option>Formal</option><option>Ethnic</option>
+            <option>Sportswear</option><option>Outerwear</option>
+            <option>Footwear</option><option>Accessories</option><option>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Color</label>
+          <input class="form-input" type="text" name="color" placeholder="e.g. Navy Blue">
+        </div>
+      </div>
+
+      <div class="form-row-2">
+        <div class="form-group">
+          <label class="form-label">Purchase Price (₹)</label>
+          <input class="form-input" type="number" name="purchase_price"
+                 placeholder="e.g. 1500" min="0" step="1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Month Purchased <span style="color:var(--mist);font-size:0.65rem;">(optional)</span></label>
+          <input class="form-input" type="text" name="purchase_month"
+                 placeholder="e.g. Jan 2024">
+          <div style="font-size:0.68rem;color:var(--mist);margin-top:4px;">
+            Approximate month is fine — no exact date needed.
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Times Already Worn</label>
+        <input class="form-input" type="number" name="wear_count"
+               placeholder="0" min="0" value="0">
+        <div style="font-size:0.7rem;color:var(--mist);margin-top:5px;">
+          Enter existing count if this item is already in rotation.
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:8px;">
+        <button type="submit" class="btn-gold" style="flex:1;justify-content:center;">
+          Add to Wardrobe ✓
+        </button>
+        <a href="{{ url_for('wardrobe_view') }}" class="btn-ghost"
+           style="padding:14px 20px;display:inline-flex;align-items:center;">
+          Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

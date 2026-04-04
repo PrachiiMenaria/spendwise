@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Budget — SpendWise{% endblock %}
+{% block page_title %}Budget{% endblock %}
+{% block content %}
+
+<style>
+.bud-hero { padding: 3rem 0 2rem; margin-bottom: 3rem; }
+.bud-layout { display: grid; grid-template-columns: 380px 1fr; gap: 1.8rem; }
+@media (max-width: 900px) { .bud-layout { grid-template-columns: 1fr; } }
+
+/* Form card */
+.bud-form-card {
+  background: var(--ink-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  position: sticky;
+  top: 5rem;
+}
+.bud-form-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(139,26,26,.05);
+}
+.bud-form-header h3 {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 400;
+  color: var(--cream);
+}
+.bud-form-body { padding: 1.5rem; }
+
+/* Current snapshot */
+.snapshot {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-soft);
+}
+.snap-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: .5rem 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: .82rem;
+}
+.snap-row:last-child { border-bottom: none; }
+.snap-label { color: var(--muted); }
+.snap-val   { font-family: var(--font-display); font-size: 1rem; color: var(--cream); }
+
+/* History panel */
+.history-panel {
+  background: var(--ink-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.history-header {
+  padding: 1.3rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.history-title {
+  font-family: var(--font-display);
+  font-size: .95rem;
+  font-weight: 400;
+  color: var(--cream);
+  letter-spacing: .03em;
+}
+
+/* History row */
+.hist-row {
+  display: grid;
+  grid-template-columns: 80px 50px 1fr 1fr 90px;
+  gap: .5rem;
+  align-items: center;
+  padding: .9rem 1.5rem;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: .8rem;
+  transition: background .15s;
+}
+.hist-row:last-child { border-bottom: none; }
+.hist-row:hover { background: rgba(255,255,255,.02); }
+.hist-row.header {
+  font-size: .62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--muted);
+  padding-top: .7rem;
+  padding-bottom: .7rem;
+  background: rgba(0,0,0,.1);
+}
+.hist-month { font-weight: 500; color: var(--cream-dk); }
+.hist-year  { color: var(--muted); }
+.hist-budget { font-family: var(--font-display); font-size: .95rem; color: var(--cream); }
+.hist-spent  { font-family: var(--font-display); font-size: .95rem; color: var(--muted-lt); }
+
+/* Mini progress inline */
+.inline-prog {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .7rem;
+}
+.inline-track {
+  flex: 1;
+  background: rgba(255,255,255,.05);
+  border-radius: 99px;
+  height: 4px;
+  overflow: hidden;
+}
+.inline-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width .6s ease;
+}
+.inline-fill.ok   { background: #4a9848; }
+.inline-fill.warn { background: var(--gold); }
+.inline-fill.over { background: var(--crimson); }
+</style>
+
+<!-- HERO -->
+<div class="bud-hero">
+  <div class="section-eyebrow reveal">Financial Planning</div>
+  <h1 class="section-heading reveal" style="font-size:3rem;">
+    Budget <em style="color:var(--crimson);">Control</em>
+  </h1>
+  <div class="gold-line reveal"></div>
+  <p class="section-sub reveal" style="margin-top:.8rem; max-width:500px;">
+    Set your monthly limits. Your money works best when it has a plan.
+  </p>
+</div>
+
+<div class="bud-layout">
+
+  <!-- Left: Form -->
+  <div class="bud-form-card reveal">
+    <div class="bud-form-header">
+      <h3>Set Monthly Budget</h3>
+    </div>
+    <div class="bud-form-body">
+      <form method="POST" action="{{ url_for('budget_view') }}">
+        <div class="form-group">
+          <label class="form-label">Month</label>
+          <select name="month" class="form-control">
+            {% for m in months %}
+            <option value="{{ m }}" {{ 'selected' if m == month }}>{{ month_names[m] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Year</label>
+          <select name="year" class="form-control">
+            {% for y in years %}
+            <option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Budget Amount (₹)</label>
+          <input type="number" name="amount" class="form-control"
+                 placeholder="e.g. 15,000"
+                 value="{{ total_budget if total_budget else '' }}"
+                 min="1" step="100" required>
+        </div>
+        <button type="submit" class="btn btn-crimson" style="width:100%; justify-content:center; padding:.8rem;">
+          {{ 'Update' if total_budget else 'Set' }} Budget →
+        </button>
+      </form>
+
+      <!-- Snapshot -->
+      {% if total_budget %}
+      <div class="snapshot">
+        <div style="font-size:.62rem; text-transform:uppercase; letter-spacing:.15em; color:var(--muted); margin-bottom:.8rem;">
+          {{ month_names[month] }} {{ year }} Snapshot
+        </div>
+        <div class="snap-row">
+          <span class="snap-label">Budget</span>
+          <span class="snap-val">₹{{ '{:,.0f}'.format(analytics.budget) }}</span>
+        </div>
+        <div class="snap-row">
+          <span class="snap-label">Spent</span>
+          <span class="snap-val">₹{{ '{:,.0f}'.format(analytics.total_spent) }}</span>
+        </div>
+        <div class="snap-row">
+          <span class="snap-label">Remaining</span>
+          <span class="snap-val" style="{{ 'color:#d98080' if analytics.remaining < 0 else '' }}">
+            ₹{{ '{:,.0f}'.format(analytics.remaining|abs) }}
+            {{ '(over)' if analytics.remaining < 0 else '' }}
+          </span>
+        </div>
+        <div style="margin-top:1rem;">
+          <div class="prog-track">
+            <div class="prog-fill {{ 'danger' if analytics.pct_used > 100 else 'gold' if analytics.pct_used > 80 else 'green' }}"
+                 data-pct="{{ [analytics.pct_used, 100]|min }}" style="width:0%"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:.68rem; color:var(--muted); margin-top:.3rem;">
+            <span>{{ analytics.pct_used }}% used</span>
+            <span>{{ 100 - [analytics.pct_used, 100]|min }}% free</span>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Right: History -->
+  <div class="history-panel reveal">
+    <div class="history-header">
+      <div class="history-title">Budget History</div>
+    </div>
+
+    {% if budgets %}
+    <div>
+      <div class="hist-row header">
+        <span>Month</span><span>Year</span><span>Budget</span><span>Spent</span><span>Status</span>
+      </div>
+      {% for b in budgets %}
+      {% set pct = (b.spent / b.amount * 100)|round(0)|int if b.amount else 0 %}
+      <div class="hist-row">
+        <span class="hist-month">{{ month_names[b.month] }}</span>
+        <span class="hist-year">{{ b.year }}</span>
+        <span class="hist-budget">₹{{ '{:,.0f}'.format(b.amount) }}</span>
+        <span class="hist-spent">₹{{ '{:,.0f}'.format(b.spent) }}</span>
+        <div class="inline-prog">
+          <div class="inline-track">
+            <div class="inline-fill {{ 'over' if pct > 100 else 'warn' if pct > 80 else 'ok' }} prog-fill"
+                 data-pct="{{ [pct, 100]|min }}" style="width:0%"></div>
+          </div>
+          <span style="color:{{ '#d98080' if pct > 100 else 'var(--gold)' if pct > 80 else '#9fcf9f' }}; font-size:.68rem; white-space:nowrap;">
+            {{ pct }}%
+          </span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <span class="es-glyph">◎</span>
+      <h3>No budgets yet</h3>
+      <p>Set your first budget using the form.</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

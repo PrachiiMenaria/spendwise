@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Prediction Result</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .result-container {
+            max-width: 580px;
+            margin: 80px auto;
+            padding: 40px;
+        }
+        h1 { font-size: 28px; margin-bottom: 30px; }
+
+        .metric-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        .metric-card {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 14px;
+            padding: 20px;
+            text-align: center;
+        }
+        .metric-card .value {
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .metric-card .label {
+            font-size: 12px;
+            color: rgba(255,255,255,0.6);
+        }
+
+        /* Risk badge colours */
+        .badge {
+            display: inline-block;
+            padding: 6px 18px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 24px;
+        }
+        .badge-safe     { background: rgba(45,217,142,0.15); color: #2dd98e; border: 1px solid #2dd98e; }
+        .badge-moderate { background: rgba(245,166,35,0.15); color: #f5a623; border: 1px solid #f5a623; }
+        .badge-high     { background: rgba(240,78,78,0.15);  color: #f04e4e; border: 1px solid #f04e4e; }
+
+        .insight-box {
+            background: rgba(255,255,255,0.05);
+            border-left: 3px solid #7df9ff;
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.7;
+            color: rgba(255,255,255,0.85);
+        }
+
+        .btn-back {
+            display: inline-block;
+            margin-top: 16px;
+            padding: 12px 28px;
+            border-radius: 30px;
+            background: linear-gradient(45deg, #ff4ecd, #7df9ff);
+            color: white;
+            text-decoration: none;
+            font-weight: 600;
+            transition: 0.3s;
+        }
+        .btn-back:hover { transform: scale(1.04); }
+    </style>
+</head>
+<body>
+<div class="result-container">
+
+    <h1>🔮 Prediction Result</h1>
+
+    <!-- Risk badge -->
+    {% if risk == "Safe" %}
+        <span class="badge badge-safe">✅ Safe Spender</span>
+    {% elif risk == "Moderate" %}
+        <span class="badge badge-moderate">⚠️ Moderate Spender</span>
+    {% else %}
+        <span class="badge badge-high">🚨 High Risk Spender</span>
+    {% endif %}
+
+    <!-- Metric cards -->
+    <div class="metric-grid">
+        <div class="metric-card">
+            <div class="value" style="color:#7df9ff">₹{{ predicted }}</div>
+            <div class="label">Predicted Next Month Spending</div>
+        </div>
+        <div class="metric-card">
+            <div class="value" style="color:#f5a623">₹{{ budget }}</div>
+            <div class="label">Monthly Budget</div>
+        </div>
+        <div class="metric-card">
+            <div class="value">{{ ratio }}%</div>
+            <div class="label">Budget Used (predicted)</div>
+        </div>
+        <div class="metric-card">
+            <div class="value" style="color:#2dd98e">{{ wui }}</div>
+            <div class="label">Wardrobe Utilization Index</div>
+        </div>
+    </div>
+
+    <!-- Smart insight -->
+    <div class="insight-box">
+        {% if risk == "High Risk" %}
+            🚨 You are likely to <strong>exceed your budget</strong> next month.
+            Predicted spend of ₹{{ predicted }} is {{ ratio }}% of your ₹{{ budget }} budget.
+            Consider pausing non-essential purchases this month.
+        {% elif risk == "Moderate" %}
+            ⚠️ You are <strong>approaching your budget limit</strong>.
+            Try reviewing your wardrobe before buying anything new — your WUI is {{ wui }}.
+        {% else %}
+            ✅ You are on track! Your predicted spending of ₹{{ predicted }} is
+            well within your ₹{{ budget }} budget. Keep it up.
+        {% endif %}
+
+        {% if wui < 2.0 %}
+            <br><br>
+            👗 Your <strong>Wardrobe Utilization Index ({{ wui }})</strong> is low —
+            you are wearing each item fewer than 2 times on average.
+            You likely own items you rarely use. Wear more, buy less.
+        {% endif %}
+    </div>
+
+    <a href="/predict" class="btn-back">← Try Again</a>
+    &nbsp;
+    <a href="/dashboard" class="btn-back" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);">
+        📊 Dashboard
+    </a>
+
+</div>
+</body>
+</html>

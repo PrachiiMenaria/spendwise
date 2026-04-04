@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}CPW & WUI Analysis{% endblock %}
+{% block page_title %}Wardrobe Intelligence{% endblock %}
+
+{% block content %}
+
+<!-- HERO -->
+<div class="hero-section mb-32 reveal">
+  <div class="hero-eyebrow">Wardrobe Intelligence</div>
+  <h1 class="hero-title">Cost Per Wear &<br><em>Utilisation</em> Analysis</h1>
+  <p class="hero-subtitle">Understand the true value of every item in your wardrobe.</p>
+</div>
+
+<!-- KPI -->
+<div class="kpi-grid mb-24">
+  {% set all_cpw = items | map(attribute='cpw') | list %}
+  {% set total_items = items | length %}
+  {% set total_spent = items | sum(attribute='purchase_price') %}
+
+  <div class="kpi-card reveal delay-1">
+    <div class="kpi-label">Items Tracked</div>
+    <div class="kpi-value" data-countup="{{ total_items }}" data-dur="1000">{{ total_items }}</div>
+    <span class="kpi-badge neutral">in wardrobe</span>
+    <div class="kpi-icon">👗</div>
+  </div>
+  <div class="kpi-card reveal delay-2">
+    <div class="kpi-label">Total Invested</div>
+    <div class="kpi-value" data-countup="{{ total_spent }}" data-prefix="₹" data-dur="1200">₹{{ "{:,.0f}".format(total_spent) }}</div>
+    <span class="kpi-badge neutral">purchase value</span>
+    <div class="kpi-icon">💎</div>
+  </div>
+  <div class="kpi-card reveal delay-3">
+    <div class="kpi-label">Insight</div>
+    <div class="kpi-value" style="font-size:14px;padding-top:8px;line-height:1.4;">{{ insight[:60] }}{% if insight|length > 60 %}…{% endif %}</div>
+    <span class="kpi-badge gold">AI Insight</span>
+  </div>
+  <div class="kpi-card reveal delay-4">
+    <div class="kpi-label">Categories</div>
+    <div class="kpi-value" data-countup="{{ by_category | length }}" data-dur="800">{{ by_category | length }}</div>
+    <span class="kpi-badge neutral">distinct types</span>
+    <div class="kpi-icon">🗂️</div>
+  </div>
+</div>
+
+<!-- ROW 1: CPW Chart + Category Table -->
+<div class="grid-2 mb-24">
+  <div class="card reveal delay-1">
+    <div class="card-title">Average CPW by Category</div>
+    <div style="display:flex;gap:12px;margin-bottom:12px;font-size:11px;flex-wrap:wrap;">
+      <span style="display:flex;align-items:center;gap:4px;color:var(--warm-300);"><span class="cpw-dot safe"></span>≤ ₹200 — Good value</span>
+      <span style="display:flex;align-items:center;gap:4px;color:var(--warm-300);"><span class="cpw-dot warn"></span>₹200-500 — Moderate</span>
+      <span style="display:flex;align-items:center;gap:4px;color:var(--warm-300);"><span class="cpw-dot danger"></span>> ₹500 — Wear more!</span>
+    </div>
+    <div class="chart-wrap" style="height:{% if by_category|length > 3 %}{{ by_category|length * 45 + 60 }}{% else %}220{% endif %}px;">
+      <canvas id="cpwCatChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card reveal delay-2">
+    <div class="card-title">Category Summary</div>
+    {% if by_category %}
+    <div style="overflow-x:auto;">
+      <table class="styled-table">
+        <thead><tr><th>Category</th><th>Items</th><th>Total Spent</th><th>Avg CPW</th></tr></thead>
+        <tbody>
+          {% for cat in by_category %}
+          <tr>
+            <td>{{ cat.category }}</td>
+            <td>{{ cat.item_count }}</td>
+            <td>₹{{ "{:,.0f}".format(cat.total_spent) }}</td>
+            <td>
+              <span class="badge {% if cat.avg_cpw > 500 %}danger{% elif cat.avg_cpw > 200 %}warn{% else %}safe{% endif %}">
+                ₹{{ cat.avg_cpw }}/wear
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-state-icon">📊</div>
+      <div class="empty-state-text">No wardrobe items yet. <a href="{{ url_for('wardrobe_add') }}" style="color:var(--gold);">Add your first item →</a></div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- STORY INSIGHT -->
+<div class="story-insight mb-24 reveal">
+  <div class="story-insight-text">{{ insight }}</div>
+  <div class="story-insight-sub">— WardrobeIQ Cost-Per-Wear Analysis</div>
+</div>
+
+<!-- ITEMS TABLE — sorted by CPW -->
+<div class="card reveal mb-24">
+  <div class="card-title">
+    All Items (sorted by CPW — highest first)
+    <a href="{{ url_for('wardrobe_add') }}" class="btn btn-gold btn-sm">+ Add Item</a>
+  </div>
+
+  {% if items %}
+  <div style="overflow-x:auto;">
+    <table class="styled-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Category</th>
+          <th>Purchase Price</th>
+          <th>Wears</th>
+          <th>Cost Per Wear</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td><strong>{{ item.item_name }}</strong></td>
+          <td><span class="badge neutral">{{ item.category }}</span></td>
+          <td>₹{{ "{:,.0f}".format(item.purchase_price) }}</td>
+          <td>{{ item.wear_count }}</td>
+          <td>
+            <span class="badge {% if item.cpw > 500 %}danger{% elif item.cpw > 200 %}warn{% else %}safe{% endif %}">
+              ₹{{ item.cpw }}/wear
+            </span>
+          </td>
+          <td>
+            <form action="{{ url_for('wardrobe_wear', item_id=item.id) }}" method="POST" style="display:inline;">
+              <button class="btn btn-outline btn-sm" type="submit">+Wear</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-icon">👗</div>
+    <div class="empty-state-text">Your wardrobe is empty. <a href="{{ url_for('wardrobe_add') }}" style="color:var(--gold);">Start adding items →</a></div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- CPW TIPS -->
+<div class="card reveal">
+  <div class="card-title">How to Improve Your CPW</div>
+  <div class="grid-3" style="gap:16px;">
+    <div class="insight-item safe" style="flex-direction:column;text-align:center;padding:20px;">
+      <div class="insight-icon" style="font-size:28px;margin-bottom:8px;">👔</div>
+      <div class="insight-title">Wear More Often</div>
+      <div class="insight-msg">The most effective way to lower CPW is to wear existing items more before buying new ones.</div>
+    </div>
+    <div class="insight-item warn" style="flex-direction:column;text-align:center;padding:20px;">
+      <div class="insight-icon" style="font-size:28px;margin-bottom:8px;">🏷️</div>
+      <div class="insight-title">Buy Quality Over Quantity</div>
+      <div class="insight-msg">A ₹3,000 item worn 50 times (₹60/wear) beats a ₹500 item worn 5 times (₹100/wear).</div>
+    </div>
+    <div class="insight-item neutral" style="flex-direction:column;text-align:center;padding:20px;">
+      <div class="insight-icon" style="font-size:28px;margin-bottom:8px;">📦</div>
+      <div class="insight-title">Review Unused Items</div>
+      <div class="insight-msg">If an item has 0-2 wears after 6 months, consider donating or selling it to recover value.</div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+loadCPWChart('cpwCatChart');
+</script>
+{% endblock %}

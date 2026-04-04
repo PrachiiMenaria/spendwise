@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Wardrobe Analysis — SpendWise{% endblock %}
+
+{% block content %}
+<div class="sw-shell">
+
+<aside class="sw-sidebar">
+  <div class="sw-user-pill">
+    <div class="sw-avatar">{{ (session.user_name or 'U')[0]|upper }}</div>
+    <div><div class="sw-user-name">{{ session.user_name }}</div><div class="sw-user-email">Wardrobe Analysis</div></div>
+  </div>
+  <div class="sw-sidebar-section">
+    <div class="sw-sidebar-label">Navigate</div>
+    <a href="{{ url_for('dashboard') }}"      class="sw-slink"><span class="sw-slink-ico">📊</span> Dashboard</a>
+    <a href="{{ url_for('expense_list') }}"   class="sw-slink"><span class="sw-slink-ico">💸</span> Expenses</a>
+    <a href="{{ url_for('wardrobe_view') }}"  class="sw-slink"><span class="sw-slink-ico">👗</span> Wardrobe</a>
+    <a href="{{ url_for('cpw_page') }}"       class="sw-slink active"><span class="sw-slink-ico">💰</span> CPW Analysis</a>
+    <a href="{{ url_for('spending_alert') }}" class="sw-slink"><span class="sw-slink-ico">🤖</span> ML Analysis</a>
+  </div>
+  <div class="sw-sidebar-section">
+    <div class="sw-sidebar-label">Account</div>
+    <a href="{{ url_for('logout') }}" class="sw-slink"><span class="sw-slink-ico">↩</span> Sign Out</a>
+  </div>
+</aside>
+
+<main class="sw-main">
+
+  <div class="sw-hero sw-fade-up">
+    <div class="sw-hero-kicker">Wardrobe Intelligence</div>
+    <h1 class="sw-hero-title">Cost Per Wear &<br><em>Wardrobe Insights</em></h1>
+    <p class="sw-hero-sub">Know the true value of every item you own</p>
+    <div class="sw-hero-badge">
+      <a href="{{ url_for('wardrobe_add') }}" class="sw-btn primary">👗 Add Item</a>
+    </div>
+  </div>
+
+  <!-- Insight strip -->
+  {% if insight %}
+  <div class="sw-strip sw-fade-up d1">
+    <span class="sw-strip-icon">💡</span>
+    <span>{{ insight }}</span>
+  </div>
+  {% endif %}
+
+  <!-- CPW by category -->
+  {% if by_category %}
+  <div class="sw-row sw-row-2 sw-fade-up d1">
+    <div class="sw-panel">
+      <div class="sw-panel-title">📊 CPW by Category</div>
+      <div class="sw-chart-wrap"><canvas id="cpwChart"></canvas></div>
+    </div>
+    <div class="sw-panel">
+      <div class="sw-panel-title">🏷️ Category Breakdown</div>
+      {% set max_cpw = by_category[0].avg_cpw if by_category else 1 %}
+      {% for cat in by_category %}
+      <div class="sw-cat-item">
+        <span class="sw-cat-name">{{ cat.category }}</span>
+        <div class="sw-cat-bar-wrap">
+          <div class="sw-cat-track">
+            <div class="sw-cat-fill" style="width:{{ ((cat.avg_cpw / [max_cpw, 0.01]|max)*100)|round }}%;
+              background:{% if cat.avg_cpw > 300 %}var(--danger){% elif cat.avg_cpw > 150 %}var(--warn){% else %}var(--safe){% endif %};"></div>
+          </div>
+        </div>
+        <span class="sw-cat-amt">₹{{ cat.avg_cpw }}/wear</span>
+      </div>
+      {% endfor %}
+      <div style="margin-top:1rem;display:flex;gap:1rem;flex-wrap:wrap;">
+        <div class="sw-legend-item"><div class="sw-legend-dot" style="background:var(--safe);"></div>&lt;₹150 Great</div>
+        <div class="sw-legend-item"><div class="sw-legend-dot" style="background:var(--warn);"></div>₹150–300 Moderate</div>
+        <div class="sw-legend-item"><div class="sw-legend-dot" style="background:var(--danger);"></div>&gt;₹300 High</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Item list -->
+  {% if items %}
+  <div class="sw-panel sw-fade-up d2" style="margin-bottom:1.25rem;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:.5rem;">
+      <div class="sw-panel-title" style="margin:0;">👗 All Items — Cost Per Wear</div>
+      <span style="font-family:var(--ff-mono);font-size:.75rem;color:var(--text3);">{{ items|length }} items</span>
+    </div>
+    {% for item in items %}
+    <div class="sw-cpw-item">
+      <div style="flex:1;">
+        <div class="sw-cpw-name">{{ item.item_name }}</div>
+        <div class="sw-cpw-cat">{{ item.category }}
+          {% if item.wear_count == 0 %}
+          <span style="color:var(--danger);font-size:.7rem;"> · Never worn</span>
+          {% endif %}
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div class="sw-cpw-val">
+          ₹{{ item.cpw }}/wear
+          {% if item.cpw > 300 %}<span class="sw-cpw-badge high">High</span>
+          {% elif item.cpw > 150 %}<span class="sw-cpw-badge med">Moderate</span>
+          {% else %}<span class="sw-cpw-badge low">Great</span>{% endif %}
+        </div>
+        <div style="font-size:.72rem;color:var(--text3);font-family:var(--ff-mono);">
+          ₹{{ item.purchase_price }} · {{ item.wear_count }} wears
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="sw-panel sw-fade-up">
+    <div class="sw-empty">
+      <div class="sw-empty-icon">👗</div>
+      No wardrobe items yet.<br>
+      <a href="{{ url_for('wardrobe_add') }}">Add your first item →</a>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- WUI explanation -->
+  <div class="sw-panel sw-fade-up d3">
+    <div class="sw-panel-title">ℹ️ Understanding These Metrics</div>
+    <div class="sw-row sw-row-2" style="margin:0;">
+      <div>
+        <div style="font-size:.9rem;font-weight:700;color:var(--espresso);margin-bottom:.5rem;">Cost Per Wear (CPW)</div>
+        <div style="font-size:.82rem;color:var(--text2);line-height:1.7;">
+          CPW = Purchase Price ÷ Times Worn.<br>
+          A lower CPW means better value for money.<br>
+          Target: <strong style="color:var(--safe);">under ₹150/wear</strong> for regular items.
+        </div>
+      </div>
+      <div>
+        <div style="font-size:.9rem;font-weight:700;color:var(--espresso);margin-bottom:.5rem;">Wardrobe Utilisation Index (WUI)</div>
+        <div style="font-size:.82rem;color:var(--text2);line-height:1.7;">
+          WUI = Total Wears ÷ Total Items.<br>
+          Higher WUI = more use from what you own.<br>
+          Target: <strong style="color:var(--safe);">5+ wears</strong> per item on average.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(async () => {
+  try {
+    const res = await fetch('/api/chart/cpw-by-category');
+    const d   = await res.json();
+    const el  = document.getElementById('cpwChart');
+    if (!el || !d.labels.length) return;
+    new Chart(el, {
+      type: 'bar',
+      data: {
+        labels: d.labels,
+        datasets: [{
+          label: 'Avg CPW ₹', data: d.values,
+          backgroundColor: d.values.map(v => v > 300 ? 'rgba(176,48,48,.4)' : v > 150 ? 'rgba(192,122,26,.4)' : 'rgba(45,122,79,.4)'),
+          borderColor:     d.values.map(v => v > 300 ? '#b03030' : v > 150 ? '#c07a1a' : '#2d7a4f'),
+          borderWidth: 1.5, borderRadius: 5
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, grid: { color: SW_GRID } }, y: { grid: { color: SW_GRID } } }
+      }
+    });
+  } catch(e) { console.warn('cpwChart:', e); }
+})();
+</script>
+{% endblock %}

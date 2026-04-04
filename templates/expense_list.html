@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% block title %}Expenses{% endblock %}
+{% block page_title %}Expense Tracker{% endblock %}
+
+{% block content %}
+
+<!-- ── HERO ROW ── -->
+<div class="hero-section mb-32 reveal" style="padding:40px 48px;">
+  <div class="hero-eyebrow">Monthly Tracker</div>
+  <div style="display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;">
+    <div>
+      <h1 class="hero-title" style="font-size:42px;margin-bottom:6px;">
+        ₹<span data-countup="{{ summary.current_total }}" data-dur="1200">{{ "{:,.0f}".format(summary.current_total) }}</span>
+      </h1>
+      <div style="font-size:13px;color:rgba(250,247,242,0.5);">
+        spent in
+        {% set months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+        {{ months[summary.month] }} {{ summary.year }}
+      </div>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-left:auto;">
+      {% if summary.mom_delta > 0 %}
+      <div style="text-align:center;">
+        <div style="font-family:var(--font-display);font-size:20px;color:#e8a89d;">+₹{{ "{:,.0f}".format(summary.mom_delta) }}</div>
+        <div style="font-size:11px;color:rgba(250,247,242,0.4);margin-top:2px;">vs last month</div>
+      </div>
+      {% elif summary.mom_delta < 0 %}
+      <div style="text-align:center;">
+        <div style="font-family:var(--font-display);font-size:20px;color:#a8d5b5;">-₹{{ "{:,.0f}".format(summary.mom_delta|abs) }}</div>
+        <div style="font-size:11px;color:rgba(250,247,242,0.4);margin-top:2px;">vs last month</div>
+      </div>
+      {% endif %}
+      {% if summary.budget > 0 %}
+      <div style="text-align:center;">
+        <div style="font-family:var(--font-display);font-size:20px;color:var(--gold);">{{ summary.util_pct }}%</div>
+        <div style="font-size:11px;color:rgba(250,247,242,0.4);margin-top:2px;">budget used</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Inline progress -->
+  {% if summary.budget > 0 %}
+  <div style="margin-top:24px;">
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(250,247,242,0.4);margin-bottom:6px;">
+      <span>₹0</span><span>Budget: ₹{{ "{:,.0f}".format(summary.budget) }}</span>
+    </div>
+    <div style="height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;">
+      <div style="height:100%;width:{{ [summary.util_pct, 100]|min }}%;
+        background:{% if summary.util_pct > 90 %}linear-gradient(90deg,#C0392B,#e74c3c){% elif summary.util_pct > 75 %}linear-gradient(90deg,#B7770D,#f39c12){% else %}linear-gradient(90deg,#C9A84C,#E8D5A3){% endif %};
+        border-radius:3px;transition:width 1.2s ease;" id="heroBar"></div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── MONTH FILTER + ADD BUTTON ── -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <label class="form-label" style="margin-bottom:0;">View month:</label>
+    <select class="form-control" id="monthYearSelect" style="width:auto;padding:8px 16px;">
+      {% for opt in month_options %}
+      <option value="{{ opt.month }}-{{ opt.year }}"
+        {% if opt.month == selected_month and opt.year == selected_year %}selected{% endif %}>
+        {{ opt.label }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <a href="{{ url_for('expense_add') }}" class="btn btn-gold">+ Add Expense</a>
+</div>
+
+<!-- ── KPI ROW ── -->
+<div class="kpi-grid mb-24" style="grid-template-columns:repeat(3,minmax(0,1fr));">
+  <div class="kpi-card reveal delay-1">
+    <div class="kpi-label">Total Spent</div>
+    <div class="kpi-value">₹{{ "{:,.0f}".format(summary.current_total) }}</div>
+    <span class="kpi-badge {% if summary.mom_delta > 0 %}danger{% else %}safe{% endif %}">
+      {% if summary.mom_delta > 0 %}↑ ₹{{ "{:,.0f}".format(summary.mom_delta) }} more{% else %}↓ ₹{{ "{:,.0f}".format(summary.mom_delta|abs) }} less{% endif %} than last month
+    </span>
+  </div>
+  <div class="kpi-card reveal delay-2">
+    <div class="kpi-label">Budget Remaining</div>
+    <div class="kpi-value {% if summary.remaining < 0 %}style="color:var(--danger)"{% endif %}">
+      ₹{{ "{:,.0f}".format(summary.remaining) }}
+    </div>
+    <span class="kpi-badge {% if summary.remaining < 0 %}danger{% elif summary.util_pct > 80 %}warn{% else %}safe{% endif %}">
+      {{ summary.util_pct }}% used
+    </span>
+  </div>
+  <div class="kpi-card reveal delay-3">
+    <div class="kpi-label">Previous Month</div>
+    <div class="kpi-value">₹{{ "{:,.0f}".format(summary.prev_total) }}</div>
+    <span class="kpi-badge neutral">
+      {% set months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+      {{ months[summary.prev_month] }} {{ summary.prev_year }}
+    </span>
+  </div>
+</div>
+
+<!-- ── CHARTS + CATEGORY BREAKDOWN ── -->
+<div class="grid-2 mb-24">
+  <div class="card reveal delay-1">
+    <div class="card-title">Category Breakdown</div>
+    <div id="catLegend" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;font-size:11px;"></div>
+    <div class="chart-wrap" style="height:220px;">
+      <canvas id="catPieChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card reveal delay-2">
+    <div class="card-title">Category Amounts</div>
+    {% if summary.by_category %}
+      {% for cat in summary.by_category %}
+      <div class="prog-row">
+        <div class="prog-header">
+          <span>{{ cat.category }}</span>
+          <strong>₹{{ "{:,.0f}".format(cat.total) }}</strong>
+        </div>
+        <div class="prog-bar">
+          {% if summary.current_total > 0 %}
+            {% set w = (cat.total / summary.current_total * 100)|round(1) %}
+          {% else %}
+            {% set w = 0 %}
+          {% endif %}
+          <div class="prog-fill" style="width: {{ w }}%"></div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-state-icon">📊</div>
+      <div class="empty-state-text">No expenses recorded for this month yet</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── EXPENSES TABLE ── -->
+<div class="card reveal mb-24">
+  <div class="card-title">
+    All Expenses
+    <small>{{ expenses|length }} records</small>
+  </div>
+
+  {% if expenses %}
+  <div style="overflow-x:auto;">
+    <table class="styled-table">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Amount</th>
+          <th>Note</th>
+          <th>Added</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for exp in expenses %}
+        <tr>
+          <td>
+            <span class="badge neutral">{{ exp.category }}</span>
+          </td>
+          <td>
+            <strong>₹{{ "{:,.0f}".format(exp.amount) }}</strong>
+          </td>
+          <td style="color:#A8896A;font-size:12px;">
+            {{ exp.note or '—' }}
+          </td>
+          <td style="color:#A8896A;font-size:12px;">
+            {{ exp.created_at.strftime('%d %b') if exp.created_at else '—' }}
+          </td>
+          <td>
+            <form action="{{ url_for('expense_delete', expense_id=exp.id) }}" method="POST"
+                  onsubmit="return confirm('Remove this expense?');">
+              <button class="btn btn-danger btn-sm" type="submit" style="font-size:11px;padding:4px 10px;">
+                Delete
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-icon">💸</div>
+    <div class="empty-state-text">
+      No expenses for this month.<br>
+      <a href="{{ url_for('expense_add') }}" style="color:var(--gold);">Add your first expense →</a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── RECOMMENDATIONS ── -->
+<div class="card reveal">
+  <div class="card-title">Smart Recommendations</div>
+  {% if summary.current_total > 0 %}
+    {% if summary.util_pct > 90 %}
+    <div class="insight-item danger">
+      <div class="insight-icon">🚨</div>
+      <div><div class="insight-title">Critical: Budget Almost Exhausted</div><div class="insight-msg">Only ₹{{ "{:,.0f}".format(summary.remaining if summary.remaining > 0 else 0) }} left. Consider a 5-day spending pause to recover.</div></div>
+    </div>
+    {% elif summary.util_pct > 75 %}
+    <div class="insight-item warn">
+      <div class="insight-icon">⚠️</div>
+      <div><div class="insight-title">Warning: High Budget Utilisation</div><div class="insight-msg">You've used {{ summary.util_pct }}% of your budget. Avoid non-essential purchases for the rest of the month.</div></div>
+    </div>
+    {% else %}
+    <div class="insight-item safe">
+      <div class="insight-icon">✅</div>
+      <div><div class="insight-title">On Track</div><div class="insight-msg">Great discipline! You're within budget. Keep maintaining this pace.</div></div>
+    </div>
+    {% endif %}
+
+    {% if summary.mom_delta > 0 %}
+    <div class="insight-item warn">
+      <div class="insight-icon">📈</div>
+      <div><div class="insight-title">Spending Increased This Month</div><div class="insight-msg">You're spending ₹{{ "{:,.0f}".format(summary.mom_delta) }} more than last month. Review your categories to find where spending crept up.</div></div>
+    </div>
+    {% endif %}
+
+    {% if summary.by_category %}
+      {% set top_cat = summary.by_category[0] %}
+      {% if summary.current_total > 0 and (top_cat.total / summary.current_total) > 0.4 %}
+      <div class="insight-item neutral">
+        <div class="insight-icon">🎯</div>
+        <div><div class="insight-title">Category Dominance: {{ top_cat.category }}</div><div class="insight-msg">{{ top_cat.category }} accounts for {{ ((top_cat.total / summary.current_total) * 100)|round(0)|int }}% of your spending. Consider spreading expenses more evenly.</div></div>
+      </div>
+      {% endif %}
+    {% endif %}
+  {% else %}
+  <div class="insight-item neutral">
+    <div class="insight-icon">💡</div>
+    <div><div class="insight-title">No expenses yet</div><div class="insight-msg">Start logging your expenses to get personalised recommendations.</div></div>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const MONTH = {{ selected_month }};
+const YEAR  = {{ selected_year }};
+const PALETTE = ['#A8896A','#C9A84C','#8B6F52','#6E5540','#D4B896','#52402F'];
+
+(async () => {
+  const data = await fetchJSON(`/api/chart/expense-by-category?month=${MONTH}&year=${YEAR}`);
+  if (data && data.labels.length) {
+    spendPieChart('catPieChart', data.labels, data.values);
+    const legend = document.getElementById('catLegend');
+    if (legend) {
+      legend.innerHTML = data.labels.map((l,i) =>
+        `<span style="display:flex;align-items:center;gap:4px;">
+          <span style="width:8px;height:8px;border-radius:2px;background:${PALETTE[i%PALETTE.length]};display:inline-block;"></span>${l}
+        </span>`
+      ).join('');
+    }
+  }
+})();
+
+// Animate hero bar
+setTimeout(() => {
+  const bar = document.getElementById('heroBar');
+  if (bar) bar.style.width = bar.style.width;
+}, 100);
+</script>
+{% endblock %}

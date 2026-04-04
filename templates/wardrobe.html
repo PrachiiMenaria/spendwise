@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}My Wardrobe — WardrobeIQ{% endblock %}
+{% block content %}
+
+<div class="alert-layout" style="max-width:1100px;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:40px;">
+    <div>
+      <div class="chapter reveal"><span class="chapter-num">Wardrobe</span><div class="chapter-line"></div></div>
+      <h1 class="reveal reveal-delay-1" style="font-size:2.4rem;">Your <em>clothing inventory.</em></h1>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <a href="{{ url_for('wardrobe_add') }}" class="btn-gold" style="padding:12px 24px;font-size:0.82rem;">+ Add Item</a>
+      <a href="{{ url_for('cpw_page') }}" class="btn-ghost" style="padding:12px 20px;font-size:0.82rem;">CPW Report</a>
+    </div>
+  </div>
+
+  {% if items %}
+  <div class="panel reveal">
+    <div class="panel-head">
+      <div class="panel-title">👗 All Items ({{ items|length }})</div>
+      <span style="font-size:0.68rem;color:var(--mist);text-transform:uppercase;letter-spacing:0.08em;">
+        CPW = Cost Per Wear (lower = better)
+      </span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr><th>Item</th><th>Category</th><th>Color</th><th>Price ₹</th><th>Wears</th><th>CPW ₹</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td style="color:var(--bone);font-weight:400;">{{ item.item_name }}</td>
+            <td><span class="wear-tag">{{ item.category }}</span></td>
+            <td style="color:var(--mist);">{{ item.color or '—' }}</td>
+            <td>₹{{ "%.0f"|format(item.purchase_price) }}</td>
+            <td>
+              <span class="wear-tag" style="{% if item.wear_count==0 %}background:rgba(184,64,64,0.12);color:#f09898;{% endif %}">
+                {{ item.wear_count }}×
+              </span>
+            </td>
+            <td style="color:{% if item.cpw and item.cpw > 300 %}#f09898{% elif item.cpw and item.cpw < 100 %}#70e8a0{% else %}var(--bone2){% endif %};">
+              {{ '₹' ~ item.cpw if item.cpw else '—' }}
+            </td>
+            <td>
+              <div style="display:flex;gap:8px;">
+                <form method="POST" action="{{ url_for('wardrobe_wear', item_id=item.id) }}" style="margin:0;">
+                  <button type="submit"
+                    style="background:rgba(200,169,110,0.1);border:1px solid var(--border-gold);
+                           color:var(--gold);padding:5px 12px;border-radius:6px;font-size:0.72rem;cursor:none;">
+                    👕 Worn
+                  </button>
+                </form>
+                <form method="POST" action="{{ url_for('wardrobe_delete', item_id=item.id) }}"
+                      onsubmit="return confirm('Remove {{ item.item_name }}?')" style="margin:0;">
+                  <button type="submit"
+                    style="background:rgba(184,64,64,0.1);border:1px solid rgba(184,64,64,0.3);
+                           color:#f09898;padding:5px 12px;border-radius:6px;font-size:0.72rem;cursor:none;">
+                    ✕
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="panel" style="text-align:center;padding:80px 40px;">
+    <div style="font-size:3.5rem;margin-bottom:16px;opacity:0.25;">👗</div>
+    <h3 style="color:var(--bone);margin-bottom:10px;">Your wardrobe is empty.</h3>
+    <p style="color:var(--mist);margin-bottom:28px;max-width:360px;margin-left:auto;margin-right:auto;">
+      Add clothing items to start tracking WUI, CPW, and spending patterns.
+    </p>
+    <a href="{{ url_for('wardrobe_add') }}" class="btn-gold">+ Add Your First Item</a>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
