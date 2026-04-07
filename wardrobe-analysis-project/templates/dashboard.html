@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<div class="dashboard">
+
+    <h1>📊 Your Wardrobe Insights</h1>
+
+    <div class="cards">
+        <div class="card">
+            <h2>{{ total_items }}</h2>
+            <p>Total Items</p>
+        </div>
+
+        <div class="card">
+            <h2>{{ avg_time }}</h2>
+            <p>Avg Decision Time (min)</p>
+        </div>
+
+        <div class="card">
+            <h2>₹{{ total_spending }}</h2>
+            <p>Total Spending</p>
+        </div>
+    </div>
+    <div class="insights">
+    <h2>🔥 Most Worn Item</h2>
+
+    {% if most_worn %}
+        <p><strong>{{ most_worn[0] }}</strong></p>
+        <p>Worn {{ most_worn[1] }} times</p>
+    {% else %}
+        <p>No data available</p>
+    {% endif %}
+</div>
+
+    <canvas id="myChart"></canvas>
+    <canvas id="pieChart"></canvas>
+
+</div>
+<div id="chart-data"
+     data-items="{{ total_items }}"
+     data-time="{{ avg_time }}"
+     data-spending="{{ total_spending }}">
+</div>
+<div id="category-data"
+     data-labels='{{ categories | map(attribute=0) | list | tojson }}'
+     data-values='{{ categories | map(attribute=1) | list | tojson }}'>
+</div>
+<script>
+const dataElement = document.getElementById('chart-data');
+
+const totalItems = parseInt(dataElement.dataset.items) || 0;
+const avgTime = parseInt(dataElement.dataset.time) || 0;
+const totalSpending = parseInt(dataElement.dataset.spending) || 0;
+
+// BAR CHART
+const ctx = document.getElementById('myChart').getContext('2d');
+
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: ['Items', 'Decision Time', 'Spending'],
+        datasets: [{
+            label: 'Your Stats',
+            data: [totalItems, avgTime, totalSpending],
+            borderWidth: 1
+        }]
+    },
+    options: {
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        }
+    }
+});
+
+// PIE CHART
+const catElement = document.getElementById('category-data');
+
+const catLabels = JSON.parse(catElement.dataset.labels);
+const catData = JSON.parse(catElement.dataset.values);
+
+new Chart(document.getElementById('pieChart'), {
+    type: 'pie',
+    data: {
+        labels: catLabels,
+        datasets: [{
+            data: catData
+        }]
+    }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>Wardrobe Survey</title>
+</head>
+
+<body>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/survey.css') }}">
+<h2>Wardrobe Usage Survey</h2>
+
+<form method="POST">
+
+<label>How many clothes do you own?</label>
+<input type="number" name="wardrobe_size" required>
+<br><br>
+
+<label>How long do you take to choose an outfit? (minutes)</label>
+<input type="number" name="average_decision_time" required>
+<br><br>
+
+<label>Monthly spending on clothes (₹)</label>
+<input type="number" name="monthly_spending" required>
+<br><br>
+
+<label>How often do you repeat outfits?</label>
+<select name="repeat_frequency">
+<option>Very Often</option>
+<option>Sometimes</option>
+<option>Rarely</option>
+<option>Never</option>
+</select>
+
+<br><br>
+
+<button type="submit">Submit Survey</button>
+
+</form>
+
+</body>
+</html>

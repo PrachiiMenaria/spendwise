@@ -1,0 +1,20 @@
+<form method="POST">
+
+<input type="text" name="name" placeholder="Name" required>
+
+<input type="number" name="age" placeholder="Age">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/register.css') }}">
+
+<select name="gender">
+<option>Male</option>
+<option>Female</option>
+<option>Other</option>
+</select>
+
+<input type="text" name="college" placeholder="College">
+
+<input type="email" name="email" placeholder="Email">
+
+<button type="submit">Next</button>
+
+</form>

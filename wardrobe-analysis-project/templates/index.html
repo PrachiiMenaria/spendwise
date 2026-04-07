@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>AI Wardrobe</title>
+
+    <!-- ✅ Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- ✅ VERY IMPORTANT (Flask CSS link) -->
+     <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
+</head>
+
+<body>
+<nav class="navbar">
+  <div class="nav-container">
+
+    <div class="logo">
+      AI Wardrobe
+    </div>
+    <div class="particles"></div>
+    <ul class="nav-links">
+  <li><a href="/">Home</a></li>
+  <li><a href="/register">Register</a></li>
+  <li><a href="/survey">Survey</a></li>
+  <li><a href="/wardrobe">Wardrobe</a></li>
+  <li><a href="/dashboard">Dashboard</a></li>
+  <li><a href="/decision">Decision</a></li>
+</ul>
+
+    <div class="nav-actions">
+      <div class="buttons">
+    <a href="/register" class="btn-primary">Start Now</a>
+    <a href="/wardrobe" class="btn-outline">My Wardrobe</a>
+</div>
+    </div>
+
+  </div>
+</nav>
+<section class="how-it-works">
+
+  <h2>How It Works</h2>
+
+  <div class="steps">
+
+    <div class="step fade-in">
+      <h3>1. Upload Clothes</h3>
+      <p>Digitize your wardrobe in seconds.</p>
+    </div>
+
+    <div class="step fade-in">
+      <h3>2. AI Analysis</h3>
+      <p>We analyze style, usage, and patterns.</p>
+    </div>
+
+    <div class="step fade-in">
+      <h3>3. Smart Suggestions</h3>
+      <p>Get outfit recommendations instantly.</p>
+    </div>
+
+  </div>
+
+</section>
+<section class="features">
+
+  <h2 class="section-title">Transform Your Wardrobe Experience</h2>
+
+  <div class="features-container">
+    <div class="feature-card fade-in">
+  <h3>👚 Wardrobe Manager</h3>
+  <p>
+    Add, track, and organize all your clothing items digitally.
+  </p>
+</div>
+
+<div class="feature-card fade-in">
+  <h3>📈 Outfit Decision Tracker</h3>
+  <p>
+    Analyze how long you take to choose outfits and improve decisions.
+  </p>
+</div>
+
+<div class="feature-card fade-in">
+  <h3>🧾 Survey Insights</h3>
+  <p>
+    Understand your fashion habits through smart data collection.
+  </p>
+</div>
+
+<div class="feature-card fade-in">
+  <h3>📊 Personal Dashboard</h3>
+  <p>
+    Visualize your wardrobe usage and spending patterns.
+  </p>
+</div>
+
+    <div class="feature-card fade-in">
+      <h3>👗 Smart Outfit Suggestions</h3>
+      <p>
+        Get AI-powered outfit ideas based on your wardrobe, weather, and occasion.
+      </p>
+    </div>
+
+    <div class="feature-card fade-in">
+      <h3>📊 Track Clothing Usage</h3>
+      <p>
+        Monitor how often you wear clothes and make smarter fashion decisions.
+      </p>
+    </div>
+
+    <div class="feature-card fade-in">
+      <h3>🌦 Weather-Based Styling</h3>
+      <p>
+        Receive outfit recommendations tailored to real-time weather conditions.
+      </p>
+    </div>
+
+    <div class="feature-card fade-in">
+      <h3>🧠 AI Wardrobe Analysis</h3>
+      <p>
+        Analyze your dressing patterns and optimize your clothing choices.
+      </p>
+    </div>
+
+    <div class="feature-card fade-in">
+      <h3>♻️ Sustainable Fashion</h3>
+      <p>
+        Reduce waste by maximizing usage of existing clothes.
+      </p>
+    </div>
+
+    <div class="feature-card fade-in">
+      <h3>⚡ Instant Recommendations</h3>
+      <p>
+        Get instant outfit suggestions with just a few clicks.
+      </p>
+    </div>
+
+  </div>
+
+</section>
+<section class="hero">
+
+    <div class="hero-container">
+
+        <div class="hero-left">
+            <p class="tag">AI-Powered Wardrobe</p>
+
+            <h1>
+                Your wardrobe,<br>
+                <span>reimagined</span>
+            </h1>
+
+            <p class="subtext">
+                Analyze your clothing habits, track usage, and make smarter fashion decisions.
+            </p>
+
+            <div class="buttons">
+                <a href="/register" class="btn-primary">Get Started</a>
+                <a href="#" class="btn-outline">How it Works</a>
+            </div>
+        </div>
+
+        <div class="hero-right">
+            <div class="image-box">
+                <img src="{{ url_for('static', filename='images/outfit.png') }}">
+            </div>
+
+            <div class="floating-card weather">
+                ☀️ 24°C, Sunny
+            </div>
+
+            <div class="floating-card tags">
+                Perfect for Work • Casual
+            </div>
+        </div>
+
+    </div>
+<div class="hero-left fade-in"></div>
+<div class="hero-right fade-in"></div>
+</section>
+<script>
+const elements = document.querySelectorAll('.fade-in');
+
+window.addEventListener('scroll', () => {
+  elements.forEach(el => {
+    const position = el.getBoundingClientRect().top;
+    const screenHeight = window.innerHeight;
+
+    if(position < screenHeight - 100){
+      el.classList.add('show');
+    }
+  });
+});
+</script>
+</body>
+</html>

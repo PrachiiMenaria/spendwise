@@ -1,0 +1,24 @@
+<form action="/add_item" method="POST">
+
+    <input type="text" name="item_name" placeholder="Item Name" required>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/wardrobe.css') }}">
+
+    <input type="text" name="color" placeholder="Color" required>
+
+    <select name="category" required>
+        <option value="">Select Category</option>
+        <option>Casual</option>
+        <option>Formal</option>
+        <option>Ethnic</option>
+        <option>Sportswear</option>
+    </select>
+
+    <input type="number" name="price" placeholder="Purchase Price (₹)" required>
+
+    <input type="date" name="date" required>
+
+    <input type="number" name="wear_count" placeholder="Times Worn" value="0">
+
+    <button type="submit">Add Item</button>
+
+</form>

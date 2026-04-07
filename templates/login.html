@@ -1,54 +1,153 @@
-<!-- ═══════════════════════════════════════
-     login.html
-═══════════════════════════════════════ -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sign In — SpendWise</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=Poppins:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Login — Finora</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    :root {
+      --gold:#C4A659;--gold-light:#DBCEA0;--pink:#AF7B82;--pink-light:#EEB4C3;
+      --rose-dark:#6E423E;--cream:#FAF8F3;--cream-dark:#F0EBE0;
+      --text:#2C1F1D;--text-muted:#9E8E88;--white:#fff;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body { font-family:'DM Sans',sans-serif; background:var(--cream); min-height:100vh; display:flex; align-items:stretch; }
+
+    .auth-split { display:grid; grid-template-columns:1fr 1fr; min-height:100vh; }
+
+    /* LEFT PANEL */
+    .auth-left {
+      background:linear-gradient(135deg,var(--rose-dark) 0%,#3d1f1c 100%);
+      display:flex; flex-direction:column; justify-content:center;
+      padding:60px 48px; position:relative; overflow:hidden;
+    }
+    .auth-left::before {
+      content:''; position:absolute; inset:0;
+      background: radial-gradient(ellipse at 30% 70%,rgba(196,166,89,.25),transparent 60%),
+                  radial-gradient(ellipse at 80% 20%,rgba(238,180,195,.18),transparent 60%);
+    }
+    .auth-brand { position:relative; z-index:1; margin-bottom:48px; }
+    .auth-brand a { text-decoration:none; display:inline-flex; align-items:center; gap:10px; }
+    .auth-brand-name { font-family:'Cormorant Garamond',serif; font-size:1.8rem; font-weight:700; color:var(--cream); }
+    .auth-brand-accent { color:var(--gold-light); }
+    .auth-quote { position:relative; z-index:1; }
+    .auth-quote-text { font-family:'Cormorant Garamond',serif; font-size:2.4rem; font-weight:600; line-height:1.2; color:var(--cream); margin-bottom:20px; }
+    .auth-quote-text em { font-style:italic; color:var(--gold-light); }
+    .auth-quote-sub { font-size:.9rem; color:rgba(250,248,243,.55); line-height:1.7; max-width:360px; }
+    .auth-features { position:relative;z-index:1; margin-top:48px; display:flex;flex-direction:column;gap:16px; }
+    .auth-feat { display:flex;gap:12px;align-items:center; }
+    .auth-feat-icon { width:36px;height:36px;border-radius:10px;background:rgba(250,248,243,.08);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0; }
+    .auth-feat-text { font-size:.85rem;color:rgba(250,248,243,.65);line-height:1.5; }
+
+    /* RIGHT PANEL */
+    .auth-right {
+      display:flex; align-items:center; justify-content:center;
+      padding:60px 48px; background:var(--white);
+    }
+    .auth-form-wrap { width:100%; max-width:400px; }
+    .auth-title { font-family:'Cormorant Garamond',serif; font-size:2rem; font-weight:700; color:var(--text); margin-bottom:6px; }
+    .auth-subtitle { font-size:.9rem; color:var(--text-muted); margin-bottom:36px; }
+
+    .form-group { margin-bottom:18px; }
+    .form-label { display:block; font-size:.82rem; font-weight:600; color:#6B5A56; margin-bottom:6px; text-transform:uppercase; letter-spacing:.05em; }
+    .input-wrap { position:relative; }
+    .input-icon { position:absolute; left:14px; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:.9rem; }
+    .form-control {
+      width:100%; padding:12px 14px 12px 40px;
+      border:1.5px solid var(--cream-dark); border-radius:10px;
+      background:var(--cream); font-size:.9rem; color:var(--text);
+      font-family:'DM Sans',sans-serif; transition:.25s;
+    }
+    .form-control:focus { outline:none; border-color:var(--gold); background:var(--white); box-shadow:0 0 0 3px rgba(196,166,89,.12); }
+
+    .btn-auth {
+      width:100%; padding:14px; border-radius:50px;
+      background:linear-gradient(135deg,var(--gold),#a8893c);
+      color:var(--text); font-size:.95rem; font-weight:700;
+      border:none; cursor:pointer; transition:.3s;
+      box-shadow:0 6px 20px rgba(196,166,89,.3); margin-top:8px;
+      font-family:'DM Sans',sans-serif;
+    }
+    .btn-auth:hover { transform:translateY(-2px); box-shadow:0 10px 28px rgba(196,166,89,.4); }
+
+    .auth-divider { display:flex;align-items:center;gap:12px;margin:20px 0;color:var(--text-muted);font-size:.82rem; }
+    .auth-divider::before,.auth-divider::after { content:'';flex:1;height:1px;background:var(--cream-dark); }
+    .auth-link-row { text-align:center;font-size:.88rem;color:var(--text-muted); }
+    .auth-link-row a { color:var(--rose-dark);font-weight:600;text-decoration:none; }
+
+    .flash-box { padding:10px 16px; border-radius:8px; font-size:.85rem; margin-bottom:16px; }
+    .flash-danger  { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; }
+    .flash-success { background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; }
+    .flash-warning { background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
+
+    @media(max-width:768px) {
+      .auth-split { grid-template-columns:1fr; }
+      .auth-left { display:none; }
+      .auth-right { padding:40px 24px; }
+    }
+  </style>
 </head>
 <body>
-<div class="auth-page">
-  <div class="auth-card">
-    <div class="auth-logo">Spend<span>Wise</span></div>
-    <div class="auth-tagline">Welcome back</div>
-
-    {% with messages = get_flashed_messages(with_categories=True) %}
-    {% if messages %}
-      {% for cat, msg in messages %}
-      <div class="flash-msg {{ cat }}">{{ msg }}</div>
-      {% endfor %}
-    {% endif %}
-    {% endwith %}
-
-    <form method="POST" action="{{ url_for('login') }}">
-      <div class="form-group">
-        <label class="form-label">Email</label>
-        <input type="email" name="email" class="form-control" placeholder="you@example.com" required autofocus>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Password</label>
-        <input type="password" name="password" class="form-control" placeholder="••••••••" required>
-      </div>
-      <button type="submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center;margin-top:8px;">
-        Sign In
-      </button>
-    </form>
-
-    <div class="auth-divider">or</div>
-    <div style="text-align:center;font-size:13px;color:var(--warm-300);">
-      Don't have an account?
-      <a href="{{ url_for('register') }}" style="color:var(--gold);font-weight:500;">Create one</a>
+<div class="auth-split">
+  <!-- LEFT -->
+  <div class="auth-left">
+    <div class="auth-brand">
+      <a href="/"><span style="font-size:1.4rem">💸</span><span class="auth-brand-name">Expense<span class="auth-brand-accent">Wise</span></span></a>
     </div>
-    <div style="text-align:center;margin-top:16px;">
-      <a href="{{ url_for('home') }}" style="font-size:12px;color:var(--warm-200);">← Back to home</a>
+    <div class="auth-quote">
+      <div class="auth-quote-text">Every rupee tells a <em>story</em></div>
+      <div class="auth-quote-sub">Log in to continue building your financial intelligence dashboard. Your money story awaits.</div>
+    </div>
+    <div class="auth-features">
+      <div class="auth-feat"><div class="auth-feat-icon">❤️</div><div class="auth-feat-text">Spending Health Score — understand your financial fitness</div></div>
+      <div class="auth-feat"><div class="auth-feat-icon">🤖</div><div class="auth-feat-text">AI-powered recommendations tailored to your habits</div></div>
+      <div class="auth-feat"><div class="auth-feat-icon">📊</div><div class="auth-feat-text">Beautiful analytics that make sense of your spending</div></div>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="auth-right">
+    <div class="auth-form-wrap">
+      <!-- Flash messages -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}
+        <div class="flash-box flash-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      {% endwith %}
+
+      <div class="auth-title">Welcome back</div>
+      <div class="auth-subtitle">Sign in to your Finora account</div>
+
+      <form method="POST" action="/login">
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <div class="input-wrap">
+            <i class="fas fa-envelope input-icon"></i>
+            <input type="email" name="email" class="form-control" placeholder="you@example.com" required autofocus/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <div class="input-wrap">
+            <i class="fas fa-lock input-icon"></i>
+            <input type="password" name="password" class="form-control" placeholder="••••••••" required/>
+          </div>
+        </div>
+        <button type="submit" class="btn-auth">Sign In <i class="fas fa-arrow-right" style="margin-left:6px;"></i></button>
+      </form>
+
+      <div class="auth-divider">or</div>
+      <div class="auth-link-row">
+        Don't have an account? <a href="/register">Create one free →</a>
+      </div>
+      <div class="auth-link-row" style="margin-top:12px;">
+        <a href="/" style="color:var(--text-muted);font-size:.82rem;">← Back to home</a>
+      </div>
     </div>
   </div>
 </div>
-<script src="{{ url_for('static', filename='js/main.js') }}"></script>
-<script>initFlashDismiss();</script>
 </body>
 </html>
