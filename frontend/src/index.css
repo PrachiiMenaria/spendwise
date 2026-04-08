@@ -1,0 +1,86 @@
+/* fenora/frontend/src/index.css  — paste this over your existing index.css */
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,700;1,9..40,800&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --primary: #7c6fa0;
+  --primary-light: #a89cc8;
+  --primary-muted: rgba(124,111,160,0.1);
+  --accent: #c9a96e;
+  --success: #6aaa8a;
+  --danger: #e07070;
+  --bg: #f8f6ff;
+  --surface: #fff;
+  --text: #1a1a2e;
+  --text-muted: #9898b8;
+  --border: rgba(124,111,160,0.1);
+  --sidebar-w: 240px;
+  --nav-h: 64px;
+  --font: 'DM Sans', sans-serif;
+}
+
+html { font-size: 16px; scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── App Layout ─────────────────────────────────────────────────── */
+
+#app-shell {
+  min-height: 100vh;
+}
+
+#main-content {
+  margin-left: var(--sidebar-w);
+  padding-top: var(--nav-h);
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+#page-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 28px 80px;
+}
+
+@media (max-width: 768px) {
+  #main-content { margin-left: 0; }
+  #page-inner { padding: 20px 16px 100px; }
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(124,111,160,0.2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(124,111,160,0.35); }
+
+/* ── Animations ─────────────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pulse { 0%,100%{ opacity:1 } 50%{ opacity:.5 } }
+
+/* ── Form resets ─────────────────────────────────────────────────── */
+input, select, textarea, button {
+  font-family: var(--font);
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(124,111,160,0.12);
+}
+
+/* ── Utility classes (used inline but some kept as fallback) ─────── */
+.glass {
+  background: rgba(255,255,255,0.7);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.6);
+}

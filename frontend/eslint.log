@@ -1,0 +1,36 @@
+[0m[0m
+[0m[4mC:\Users\BAPS\wardrobe-analysis-project\frontend\src\pages\Dashboard.jsx[24m[0m
+[0m   [2m2:10[22m  [31merror[39m  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            [2mno-unused-vars[22m[0m
+[0m  [2m22:5[22m   [31merror[39m  Error: Calling setState synchronously within an effect can trigger cascading renders[0m
+[0m[0m
+[0mEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:[0m
+[0m* Update external systems with the latest state from React.[0m
+[0m* Subscribe for updates from some external system, calling setState in a callback function when external state changes.[0m
+[0m[0m
+[0mCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).[0m
+[0m[0m
+[0m  20 |   useEffect(() => {[0m
+[0m  21 |     let isMounted = true;[0m
+[0m> 22 |     setLoading(true);[0m
+[0m     |     ^^^^^^^^^^ Avoid calling setState() directly within an effect[0m
+[0m  23 |[0m
+[0m  24 |     Promise.all([[0m
+[0m  25 |       fetch('/api/get-summary').then(r => {  [2mreact-hooks/set-state-in-effect[22m[0m
+[0m[0m
+[0m[4mC:\Users\BAPS\wardrobe-analysis-project\frontend\src\pages\Landing.jsx[24m[0m
+[0m  [2m3:10[22m  [31merror[39m  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u       [2mno-unused-vars[22m[0m
+[0m  [2m8:9[22m   [31merror[39m  'y1' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  [2mno-unused-vars[22m[0m
+[0m  [2m9:9[22m   [31merror[39m  'y2' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  [2mno-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\BAPS\wardrobe-analysis-project\frontend\src\pages\Login.jsx[24m[0m
+[0m  [2m3:10[22m  [31merror[39m  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  [2mno-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\BAPS\wardrobe-analysis-project\frontend\src\pages\Register.jsx[24m[0m
+[0m  [2m3:10[22m  [31merror[39m  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  [2mno-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\BAPS\wardrobe-analysis-project\frontend\src\pages\Wardrobe.jsx[24m[0m
+[0m    [2m3:10[22m  [31merror[39m  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  [2mno-unused-vars[22m[0m
+[0m  [2m311:25[22m  [31merror[39m  'ss' is not defined                                                            [2mno-undef[22m[0m
+[0m[0m
+[0m[31m[1m✖ 9 problems (9 errors, 0 warnings)[22m[39m[0m
+[0m[31m[1m[22m[39m[0m
