@@ -1,24 +1,52 @@
-/* fenora/frontend/src/index.css  — paste this over your existing index.css */
-
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,700;1,9..40,800&display=swap');
+/* fenora/frontend/src/index.css — UPGRADED DESIGN SYSTEM */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,700;0,800;1,700&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --primary: #7c6fa0;
-  --primary-light: #a89cc8;
-  --primary-muted: rgba(124,111,160,0.1);
+  /* Core palette — warm lavender meets champagne gold */
+  --primary: #6b5fa0;
+  --primary-light: #9b8ec8;
+  --primary-muted: rgba(107,95,160,0.08);
+  --primary-glow: rgba(107,95,160,0.18);
   --accent: #c9a96e;
-  --success: #6aaa8a;
-  --danger: #e07070;
-  --bg: #f8f6ff;
-  --surface: #fff;
-  --text: #1a1a2e;
+  --accent-light: #e8c98a;
+  --success: #5aaa82;
+  --danger: #d96b6b;
+  --warning: #c9a96e;
+
+  /* Backgrounds */
+  --bg: #f5f3fc;
+  --bg-2: #eeebf8;
+  --surface: #ffffff;
+  --surface-2: #faf9ff;
+  --surface-glass: rgba(255,255,255,0.75);
+
+  /* Text */
+  --text: #18182e;
+  --text-2: #5a5880;
   --text-muted: #9898b8;
-  --border: rgba(124,111,160,0.1);
-  --sidebar-w: 240px;
-  --nav-h: 64px;
-  --font: 'DM Sans', sans-serif;
+
+  /* Borders */
+  --border: rgba(107,95,160,0.1);
+  --border-2: rgba(107,95,160,0.06);
+
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(107,95,160,0.08);
+  --shadow-md: 0 4px 20px rgba(107,95,160,0.12);
+  --shadow-lg: 0 12px 40px rgba(107,95,160,0.18);
+  --shadow-xl: 0 24px 64px rgba(107,95,160,0.22);
+
+  /* Layout */
+  --sidebar-w: 236px;
+  --nav-h: 60px;
+  --radius: 18px;
+  --radius-sm: 12px;
+  --radius-xs: 8px;
+
+  /* Typography */
+  --font: 'Outfit', sans-serif;
+  --font-display: 'Playfair Display', serif;
 }
 
 html { font-size: 16px; scroll-behavior: smooth; }
@@ -29,58 +57,100 @@ body {
   color: var(--text);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── App Layout ─────────────────────────────────────────────────── */
-
-#app-shell {
+/* ── Layout ─────────────────────────────────────────────────────── */
+.app-shell {
+  display: flex;
   min-height: 100vh;
 }
 
-#main-content {
+.app-main {
+  flex: 1;
   margin-left: var(--sidebar-w);
-  padding-top: var(--nav-h);
   min-height: 100vh;
   background: var(--bg);
 }
 
-#page-inner {
-  max-width: 960px;
+.page-content {
+  max-width: 1000px;
   margin: 0 auto;
   padding: 32px 28px 80px;
 }
 
 @media (max-width: 768px) {
-  #main-content { margin-left: 0; }
-  #page-inner { padding: 20px 16px 100px; }
+  .app-main { margin-left: 0; padding-top: calc(var(--nav-h) + 8px); }
+  .page-content { padding: 20px 16px 100px; }
 }
 
 /* ── Scrollbar ──────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(124,111,160,0.2); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(124,111,160,0.35); }
+::-webkit-scrollbar-thumb { background: rgba(107,95,160,0.18); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(107,95,160,0.32); }
 
 /* ── Animations ─────────────────────────────────────────────────── */
 @keyframes spin { to { transform: rotate(360deg); } }
-@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes pulse { 0%,100%{ opacity:1 } 50%{ opacity:.5 } }
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes float1 { 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-10px); } }
+@keyframes float2 { 0%,100%{ transform:translateY(0) rotate(1deg); } 50%{ transform:translateY(-8px) rotate(-1deg); } }
+@keyframes float3 { 0%,100%{ transform:translateY(0) rotate(-1deg); } 50%{ transform:translateY(-12px) rotate(1deg); } }
+@keyframes pulse { 0%,100%{ box-shadow: 0 0 0 0 rgba(107,95,160,0.4); } 50%{ box-shadow: 0 0 0 12px rgba(107,95,160,0); } }
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes gradientShift {
+  0%,100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes chatOpen {
+  from { opacity: 0; transform: scale(0.85) translateY(20px); transform-origin: bottom right; }
+  to   { opacity: 1; transform: scale(1) translateY(0); transform-origin: bottom right; }
+}
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+  40%            { transform: scale(1.2); opacity: 1; }
+}
 
 /* ── Form resets ─────────────────────────────────────────────────── */
-input, select, textarea, button {
-  font-family: var(--font);
-}
+input, select, textarea, button { font-family: var(--font); }
 
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--primary) !important;
-  box-shadow: 0 0 0 3px rgba(124,111,160,0.12);
+  box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
-/* ── Utility classes (used inline but some kept as fallback) ─────── */
+/* ── Utility ─────────────────────────────────────────────────────── */
 .glass {
-  background: rgba(255,255,255,0.7);
-  backdrop-filter: blur(16px);
+  background: var(--surface-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255,255,255,0.6);
+}
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-2);
+}
+
+.card-hover {
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+.card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
 }
