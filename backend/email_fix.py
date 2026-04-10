@@ -25,6 +25,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from decimal import Decimal
+from flask import jsonify, request, session
 
 logger = logging.getLogger(__name__)
 

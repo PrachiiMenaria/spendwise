@@ -26,9 +26,8 @@ export default function Expenses() {
   const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [filterCat, setFilterCat] = useState("All");
   const [form, setForm] = useState({ amount: "", category: "Food", note: "" });
-
+  const [filterCat, setFilterCat] = useState("All");
   const fetchExpenses = async () => {
     setLoading(true);
     setError(null);
@@ -226,7 +225,7 @@ export default function Expenses() {
                   {CATEGORY_ICONS[exp.category] || "💳"}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, color: "#1a1a2e", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <div style={{ fontWeight: 700, color: "#1a1a2e", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
                     {exp.note || exp.category}
                   </div>
                   <div style={{ fontSize: 11, color: "#9898b8", marginTop: 2 }}>{exp.category} · {dateStr}</div>

@@ -3,6 +3,9 @@ fenora — Flask Backend (app.py)
 Drop-in replacement: adds missing APIs, fixes response shapes expected by new frontend.
 """
 import os
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 import json
 import logging
 from functools import wraps
@@ -11,7 +14,7 @@ from decimal import Decimal
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from chatbot_engine import handle_chat_message
+
 from flask import Flask, request, session, jsonify
 from flask_cors import CORS
 import psycopg2
@@ -33,6 +36,8 @@ CORS(app,
      supports_credentials=True,
      origins=[
          "http://localhost:5173", "http://127.0.0.1:5173",
+         "http://localhost:5174", "http://127.0.0.1:5174",
+         "http://localhost:5175", "http://127.0.0.1:5175",
          "http://localhost:3000", "http://127.0.0.1:3000",
      ],
      allow_headers=["Content-Type", "Authorization"],
@@ -42,9 +47,16 @@ CORS(app,
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-
+@app.route("/")
+def index():
+    return jsonify({
+        "status": "online",
+        "message": "fenora API is running! 🚀",
+        "frontend": "http://localhost:5173"
+    })
 
 # ─── Utilities ────────────────────────────────────────────────────
+
 
 def _f(val, default=0.0):
     if val is None:
@@ -78,6 +90,17 @@ def get_db():
         port=os.getenv("DB_PORT", "5432"),
     )
 
+# Inline DB auto-migrator
+try:
+    _mig_conn = get_db()
+    with _mig_conn.cursor() as _cur:
+        pass
+    _mig_conn.commit()
+    _mig_conn.close()
+    logger.info("Auto-migrator: Ensured module columns exist.")
+except Exception as _e:
+    logger.error(f"Auto-migrator failed (safe to ignore if db not completely init): {_e}")
+
 
 def login_required(f):
     @wraps(f)
@@ -100,7 +123,8 @@ def api_register():
     name = data.get("name", "").strip()
     email = data.get("email", "").strip().lower()
     pwd = data.get("password", "")
-    budget = float(data.get("monthly_budget", data.get("budget", 10000)) or 10000)
+    budget_raw = data.get("monthly_budget") or data.get("budget")
+    budget = float(budget_raw) if budget_raw else None
 
     if not name or not email:
         return jsonify({"error": "Name and email are required."}), 400
@@ -170,6 +194,154 @@ def api_logout():
     session.clear()
     return jsonify({"message": "Logged out successfully"})
 
+@app.route("/api/budget", methods=["GET"])
+@login_required
+def api_get_budget():
+    uid = get_uid()
+    conn = get_db()
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT monthly_budget FROM users WHERE id=%s", (uid,))
+        user = cur.fetchone()
+    conn.close()
+    
+    if not user or user.get("monthly_budget") is None:
+        return jsonify({"budget": None, "message": "No budget set"})
+    return jsonify({"budget": float(user["monthly_budget"])})
+
+@app.route("/api/budget/update", methods=["PUT"])
+@login_required
+def api_update_budget():
+    uid = get_uid()
+    data = request.json or {}
+    new_raw = data.get("budget")
+    new_budget = float(new_raw) if new_raw is not None and new_raw != "" else None
+    
+    if new_budget is not None and new_budget < 0:
+        return jsonify({"error": "Budget must be positive"}), 400
+
+    conn = get_db()
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute("UPDATE users SET monthly_budget = %s WHERE id = %s", (new_budget, uid))
+        conn.close()
+        return jsonify({"message": "Budget updated successfully", "budget": new_budget})
+    except Exception as e:
+        logger.error(f"Error updating budget: {e}")
+        return jsonify({"error": "Database update failed"}), 500
+
+import uuid
+from datetime import datetime, timedelta
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+@app.route("/api/auth/forgot-password", methods=["POST", "OPTIONS"])
+def api_forgot_password():
+    if request.method == "OPTIONS":
+        response = app.make_default_options_response()
+        response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
+    data = request.json or {}
+    email = data.get("email", "").strip().lower()
+    
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+        
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cur.execute("SELECT id FROM users WHERE email=%s", (email,))
+        user = cur.fetchone()
+        
+        if user:
+            import uuid
+            token = str(uuid.uuid4())
+            expiry = datetime.now() + timedelta(minutes=15)
+            
+            cur.execute(
+                "UPDATE users SET reset_token=%s, reset_token_expiry=%s WHERE id=%s",
+                (token, expiry, user["id"])
+            )
+            conn.commit()
+            
+            sender = os.getenv("EMAIL_SENDER")
+            password = os.getenv("EMAIL_PASSWORD")
+            
+            if sender and password:
+                reset_link = f"{os.getenv('VITE_API_URL', 'http://localhost:5173')}/reset-password?token={token}"
+                msg = MIMEMultipart()
+                msg["From"] = sender
+                msg["To"] = email
+                msg["Subject"] = "Fenora: Password Reset Request"
+                body = f"Hello,\n\nYou requested a password reset. Click the link below to reset your password. This link expires in 15 minutes.\n\n{reset_link}\n\nIf you did not request this, please ignore this email.\n\n- The Fenora Team"
+                msg.attach(MIMEText(body, "plain"))
+                
+                with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                    server.login(sender, password)
+                    server.send_message(msg)
+            else:
+                logger.warning("EMAIL_SENDER or EMAIL_PASSWORD not set. Cannot send reset email.")
+                
+        cur.close()
+        conn.close()
+        
+        return jsonify({"message": "If an account with that email exists, we have sent a password reset link."})
+        
+    except Exception as e:
+        print("Reset error:", e)
+        logger.error(f"Forgot password error: {e}")
+        return jsonify({"error": "Failed to handle password reset"}), 500
+
+@app.route("/api/auth/reset-password", methods=["POST", "OPTIONS"])
+def api_reset_password():
+    if request.method == "OPTIONS":
+        response = app.make_default_options_response()
+        response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
+    data = request.json or {}
+    token = data.get("token")
+    pwd = data.get("password", "")
+    
+    if not token or not pwd:
+        return jsonify({"error": "Token and password are required"}), 400
+        
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cur.execute(
+            "SELECT id FROM users WHERE reset_token=%s AND reset_token_expiry > NOW()",
+            (token,)
+        )
+        user = cur.fetchone()
+        
+        if not user:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Invalid or expired token"}), 400
+            
+        hashed = generate_password_hash(pwd)
+        cur.execute(
+            "UPDATE users SET password_hash=%s, reset_token=NULL, reset_token_expiry=NULL WHERE id=%s",
+            (hashed, user["id"])
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({"message": "Password updated successfully"})
+        
+    except Exception as e:
+        print("Reset error:", e)
+        logger.error(f"Reset password error: {e}")
+        return jsonify({"error": "Failed to reset password"}), 500
 
 # ─── Summary & Aggregation ────────────────────────────────────────
 
@@ -263,7 +435,7 @@ def api_expenses_get():
     conn = get_db()
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            "SELECT id, amount, category, note, mood, created_at FROM expenses "
+            "SELECT id, amount, category, note, created_at FROM expenses "
             "WHERE user_id=%s ORDER BY created_at DESC LIMIT 200",
             (uid,),
         )
@@ -272,31 +444,70 @@ def api_expenses_get():
     return jsonify(_safe_json(rows))
 
 
-@app.route("/api/expenses", methods=["POST"])
+@app.route("/api/expenses/calendar", methods=["GET"])
+@login_required
+def api_expenses_calendar():
+    uid = get_uid()
+    year = request.args.get("year", datetime.now().year, type=int)
+    month = request.args.get("month", datetime.now().month, type=int)
+    conn = get_db()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT DATE(created_at) as date, COALESCE(SUM(amount),0) as amount FROM expenses "
+                "WHERE user_id=%s AND EXTRACT(YEAR FROM created_at)=%s AND EXTRACT(MONTH FROM created_at)=%s "
+                "GROUP BY DATE(created_at) ORDER BY date",
+                (uid, year, month)
+            )
+            rows = [{"date": str(r["date"]), "amount": _f(r["amount"])} for r in cur.fetchall()]
+    finally:
+        conn.close()
+    return jsonify(rows)
+
+
+@app.route("/api/expenses", methods=["POST", "OPTIONS"])
 @login_required
 def api_expenses_post():
+    if request.method == "OPTIONS":
+        return "", 200
+
     uid = get_uid()
     data = request.json or {}
     amount = float(data.get("amount", 0) or 0)
     category = data.get("category", "Others")
     note = data.get("note", "")
-    mood = data.get("mood", "") or ""
 
     if amount <= 0:
         return jsonify({"error": "Amount must be > 0"}), 400
 
     conn = get_db()
-    with conn, conn.cursor() as cur:
-        # Try new schema first (with mood), fallback to old
+    with conn, conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        today = datetime.now()
+        
+        # Grab current budget / total spent info for alerts
+        cur.execute("SELECT email, monthly_budget FROM users WHERE id=%s", (uid,))
+        user_row = cur.fetchone()
+        budget = _f(user_row["monthly_budget"] if user_row else 0)
+        user_email = user_row["email"] if user_row else None
+        
+        cur.execute(
+            "SELECT COALESCE(SUM(amount),0) AS t FROM expenses WHERE user_id=%s "
+            "AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s",
+            (uid, today.month, today.year)
+        )
+        spent_row = cur.fetchone()
+        prev_spent = _f(spent_row["t"] if spent_row else 0)
+
+        # Insert expense
+        cur.execute("BEGIN;") # Start subtransaction mentally via context? Already in 'with conn'
         try:
             cur.execute(
-                "INSERT INTO expenses(user_id, amount, category, note, mood) "
-                "VALUES(%s,%s,%s,%s,%s) RETURNING id",
-                (uid, amount, category, note, mood if mood else None),
+                "INSERT INTO expenses(user_id, amount, category, note) "
+                "VALUES(%s,%s,%s,%s) RETURNING id",
+                (uid, amount, category, note),
             )
         except Exception:
             conn.rollback()
-            today = datetime.now()
             try:
                 cur.execute(
                     "INSERT INTO expenses(user_id, amount, category, note) "
@@ -310,8 +521,41 @@ def api_expenses_post():
                     "VALUES(%s,%s,%s,%s,%s,%s) RETURNING id",
                     (uid, amount, category, note, today.month, today.year),
                 )
-        eid = cur.fetchone()[0]
-    conn.close()
+        eid = cur.fetchone()["id"]
+        conn.commit()
+
+    # Budget Trigger Alert
+    new_spent = prev_spent + amount
+    if budget > 0 and user_email:
+        trigger_level = None
+        if prev_spent < 0.5 * budget <= new_spent: trigger_level = "50%"
+        elif prev_spent < 0.8 * budget <= new_spent: trigger_level = "80%"
+        elif prev_spent <= 1.0 * budget < new_spent: trigger_level = "100%"
+        
+        if trigger_level:
+            import threading
+            def send_alert_email(to_email, level, spent_amount, monthly_budget):
+                try:
+                    sender = os.getenv("EMAIL_SENDER")
+                    pwd = os.getenv("EMAIL_PASSWORD")
+                    if not sender or not pwd: return
+                    subj = f"⚠️ Budget Alert: {level} Limit Reached" if level != "100%" else "🚨 Budget Exceeded: 100% Limit Reached"
+                    body = f"Hello,\n\nYou have hit the {level} mark of your monthly budget.\nTotal Spent this month: ₹{spent_amount:,.0f}\nMonthly Budget: ₹{monthly_budget:,.0f}\n\nReview your expenses in Fenora.\n\n- The Fenora Team"
+                    import smtplib
+                    from email.mime.text import MIMEText
+                    from email.mime.multipart import MIMEMultipart
+                    msg = MIMEMultipart()
+                    msg["From"] = sender
+                    msg["To"] = to_email
+                    msg["Subject"] = subj
+                    msg.attach(MIMEText(body, "plain"))
+                    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                        server.login(sender, pwd)
+                        server.send_message(msg)
+                except Exception as e:
+                    logger.error(f"Failed to send alert email: {e}")
+            threading.Thread(target=send_alert_email, args=(user_email, trigger_level, new_spent, budget)).start()
+
     return jsonify({"message": "Added", "id": eid}), 201
 
 
@@ -489,6 +733,7 @@ def _generate_ai_analysis(uid):
     expense_insights = []
     wardrobe_insights = []
     recommendations = []
+
 
     # --- Expense Insights ---
     if this_month_total > 0 and budget > 0:
@@ -1086,7 +1331,7 @@ def api_monthly_recap():
 
 @app.route("/api/update-budget", methods=["POST"])
 @login_required
-def api_update_budget():
+def api_update_budget_legacy():
     uid = get_uid()
     data = request.json or {}
     budget = float(data.get("monthly_budget", 0) or 0)
@@ -1237,15 +1482,6 @@ def api_smart_chat():
         )
         week_spent = _f(cur.fetchone()["t"])
 
-        # Mood spending
-        cur.execute(
-            "SELECT mood, COALESCE(SUM(amount),0) AS t FROM expenses "
-            "WHERE user_id=%s AND mood IS NOT NULL AND mood != '' "
-            "AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s "
-            "GROUP BY mood",
-            (uid, today.month, today.year),
-        )
-        mood_totals = {r["mood"]: _f(r["t"]) for r in cur.fetchall()}
 
         # Savings goals
         cur.execute(
@@ -2119,12 +2355,13 @@ def api_wardrobe_update(wid):
 
 
 # ─────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────
 # SPENDING CALENDAR  —  GET /api/expenses/calendar
 # ─────────────────────────────────────────────────────────────────────
 
 @app.route("/api/expenses/calendar", methods=["GET"])
 @login_required
-def api_expenses_calendar():
+def api_expenses_calendar_legacy():
     """
     Returns daily spending totals for a full month.
     Query params: year (default current), month (default current, 1-based)
@@ -2216,145 +2453,12 @@ def api_budget_update_alias():
         logger.error(f"Budget update alias error: {e}")
         return jsonify({"error": str(e)}), 500
 
-"""
-app_patch.py
-============
-INSTRUCTIONS:
-  Paste everything below the dashed line into app.py
-  BEFORE the line: `from email_routes import email_bp`
+# ─── Run ──────────────────────────────────────────────────────────
 
-  Also add this at the very top of app.py imports:
-      from chatbot_engine import handle_chat_message
-"""
+from email_routes import email_bp
 
-# ══════════════════════════════════════════════════════════════════════
-# PASTE BELOW INTO app.py  (before `from email_routes import email_bp`)
-# ══════════════════════════════════════════════════════════════════════
+app.register_blueprint(email_bp)
 
-import re as _re
-
-# ─────────────────────────────────────────────────────────────────────
-# SMART AI CHAT  (replaces /api/chat for free-text questions)
-# ─────────────────────────────────────────────────────────────────────
-
-@app.route("/api/smart-chat", methods=["POST"])
-@login_required
-def api_smart_chat():
-    """
-    Intelligent financial chatbot.
-    Handles 15 intent types with real DB data.
-    Body: { "message": "Can I afford ₹2000?" }
-    """
-    uid  = get_uid()
-    data = request.json or {}
-    msg  = (data.get("message") or data.get("question_key") or "").strip()
-
-    try:
-        from chatbot_engine import handle_chat_message
-        result = handle_chat_message(uid, msg, get_db)
-        return jsonify(result)
-    except ImportError:
-        # Fallback: inline logic if chatbot_engine.py is not present
-        logger.warning("chatbot_engine.py not found — using inline fallback")
-        return _smart_chat_fallback(uid, msg)
-    except Exception as e:
-        logger.error(f"Smart chat error: {e}")
-        return jsonify({"reply": "Something went wrong. Try again!", "intent": "error", "data": {}})
-
-
-def _smart_chat_fallback(uid, message):
-    """Inline fallback chat handler in case chatbot_engine.py is missing."""
-    import re
-    try:
-        conn = get_db()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        today = datetime.now()
-
-        cur.execute("SELECT monthly_budget, name FROM users WHERE id=%s", (uid,))
-        u = cur.fetchone()
-        budget = _f(u["monthly_budget"] if u else 0)
-        name   = (u.get("name") or "there").split()[0] if u else "there"
-
-        cur.execute(
-            "SELECT COALESCE(SUM(amount),0) AS t FROM expenses "
-            "WHERE user_id=%s AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s",
-            (uid, today.month, today.year),
-        )
-        spent = _f(cur.fetchone()["t"])
-        remaining = max(0.0, budget - spent)
-        pct = (spent / budget * 100) if budget > 0 else 0
-
-        cur.execute(
-            "SELECT category, COALESCE(SUM(amount),0) AS total FROM expenses "
-            "WHERE user_id=%s AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s "
-            "GROUP BY category ORDER BY total DESC LIMIT 1",
-            (uid, today.month, today.year),
-        )
-        top = cur.fetchone()
-
-        cur.execute("SELECT COUNT(*) AS c FROM wardrobe_items WHERE user_id=%s AND wear_count=0", (uid,))
-        never_worn = int(cur.fetchone()["c"])
-        cur.close()
-        conn.close()
-
-        msg_lower = message.lower()
-
-        # Afford check with real calculation
-        if any(w in msg_lower for w in ["afford", "can i buy", "should i buy"]):
-            k = re.search(r'(\d+(?:\.\d+)?)\s*k\b', msg_lower)
-            nums = re.findall(r'\b(\d[\d,]*)\b', message)
-            amount = float(k.group(1)) * 1000 if k else (float(max(nums, key=lambda x: float(x.replace(",",""))) .replace(",", "")) if nums else 0)
-
-            if amount <= 0:
-                reply = f"You have ₹{remaining:,.0f} remaining. Tell me the amount to check if you can afford it!"
-            elif amount <= remaining:
-                pct_after = ((spent + amount) / budget * 100) if budget > 0 else 0
-                reply = f"✅ Yes, you can afford ₹{amount:,.0f}!\n\n• Remaining before: ₹{remaining:,.0f}\n• Remaining after: ₹{remaining - amount:,.0f}\n• Budget used after: {pct_after:.0f}%"
-            else:
-                reply = f"❌ Not recommended. ₹{amount:,.0f} exceeds your remaining budget of ₹{remaining:,.0f}.\n\nYou've already spent ₹{spent:,.0f} of ₹{budget:,.0f} ({pct:.0f}%)."
-
-        elif any(w in msg_lower for w in ["how much left", "remaining", "balance", "left in budget"]):
-            reply = f"💰 Budget Status:\n\n• Total: ₹{budget:,.0f}\n• Spent: ₹{spent:,.0f} ({pct:.0f}%)\n• Remaining: ₹{remaining:,.0f}"
-
-        elif any(w in msg_lower for w in ["overspend", "over budget", "too much"]):
-            if spent > budget and budget > 0:
-                reply = f"🚨 Yes — you're ₹{spent-budget:,.0f} OVER budget! Stop non-essential spending immediately."
-            elif pct >= 80:
-                reply = f"⚠️ Getting close! You've used {pct:.0f}% of your budget. Be careful this week."
-            else:
-                reply = f"✅ No, you're within budget ({pct:.0f}% used). Keep it up!"
-
-        elif any(w in msg_lower for w in ["save", "reduce", "tips", "advice"]):
-            tips = []
-            if top:
-                tips.append(f"• Cut {top['category']} (₹{_f(top['total']):,.0f}) by 20%")
-            tips.append("• Cook at home 3x/week — saves ₹800–1500/month")
-            if never_worn > 0:
-                tips.append(f"• You have {never_worn} unworn clothes — wear them before buying new")
-            if remaining > 0:
-                tips.append(f"• Move ₹{int(remaining*0.3):,} to savings before month-end")
-            reply = "💡 Savings tips:\n\n" + "\n".join(tips)
-
-        else:
-            status = "🚨 Critical" if pct >= 90 else "⚠️ Tight" if pct >= 70 else "✅ Healthy"
-            reply = (
-                f"Budget snapshot: {status}\n"
-                f"• Spent: ₹{spent:,.0f} / ₹{budget:,.0f} ({pct:.0f}%)\n"
-                f"• Remaining: ₹{remaining:,.0f}\n\n"
-                "Ask me: 'Can I afford ₹X?', 'How to save?', 'Am I overspending?'"
-            )
-
-    except Exception as e:
-        logger.error(f"Fallback chat error: {e}")
-        reply = "Something went wrong. Make sure you have expenses logged!"
-
-    return jsonify({"reply": reply, "intent": "fallback", "data": {"budget": budget if 'budget' in dir() else 0}})
-
-
-# ─────────────────────────────────────────────────────────────────────
-# IMPROVED /api/chat — also handles free-text via smart router
-# (keeps backward compatibility with existing frontend calls)
-# ─────────────────────────────────────────────────────────────────────
 
 @app.route("/api/chat/v2", methods=["POST"])
 @login_required
@@ -2367,6 +2471,8 @@ def api_chat_v2():
 # EMAIL: IMPROVED /api/test-email with detailed error handling
 # (Overrides the version from email_routes.py)
 # ─────────────────────────────────────────────────────────────────────
+
+
 
 @app.route("/api/test-email-v2", methods=["POST"])
 @login_required
@@ -2421,6 +2527,8 @@ def api_test_email_v2():
         os.getenv("EMAIL_PASSWORD") or os.getenv("EMAIL_PASS") or
         os.getenv("MAIL_PASSWORD") or os.getenv("SMTP_PASS")
     )
+    if smtp_user: smtp_user = smtp_user.strip()
+    if smtp_pass: smtp_pass = smtp_pass.strip()
 
     if not smtp_user or not smtp_pass:
         return jsonify({
@@ -2571,6 +2679,8 @@ def api_test_email_v2():
 # EMAIL DEBUG ENDPOINT  — GET /api/email-debug
 # ─────────────────────────────────────────────────────────────────────
 
+
+
 @app.route("/api/email-debug", methods=["GET"])
 @login_required
 def api_email_debug():
@@ -2590,10 +2700,7 @@ def api_email_debug():
             else "⚠️ Set EMAIL_SENDER and EMAIL_PASSWORD in your .env file. Use a Gmail App Password."
         ),
     })
-# ─── Run ──────────────────────────────────────────────────────────
 
-from email_routes import email_bp
-app.register_blueprint(email_bp)
 
 if __name__ == "__main__":
     from email_service import init_email_scheduler

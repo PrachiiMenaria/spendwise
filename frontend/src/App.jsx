@@ -10,8 +10,16 @@ import FloatingChat from "./components/floatingchat";
 import "./App.css";
 import EmailSettings from "./pages/EmailSettings";
 
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+
 export default function App() {
-  const [page, setPage] = useState("landing");
+  const [page, setPage] = useState(() => {
+    const path = window.location.pathname;
+    if (path.includes("/reset-password")) return "reset-password";
+    if (path.includes("/forgot-password")) return "forgot-password";
+    return "landing";
+  });
   const [user, setUser] = useState(() => {
     try {
       const saved = localStorage.getItem("sw_user");
@@ -35,6 +43,9 @@ export default function App() {
   if (!user && page === "landing") {
     return <Landing onGetStarted={() => setPage("login")} />;
   }
+  
+  if (page === "forgot-password") return <ForgotPassword onBack={() => setPage("login")} />;
+  if (page === "reset-password") return <ResetPassword />;
 
   if (!user) return <Login onLogin={handleLogin} onBack={() => setPage("landing")} />;
 

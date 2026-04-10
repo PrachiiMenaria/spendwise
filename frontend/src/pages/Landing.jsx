@@ -29,9 +29,9 @@ const features = [
 ];
 
 const testimonials = [
-  { name: "Priya S.", college: "BITS Pilani", text: "Saved ₹3,000 last month just by tracking my Swiggy orders. Wild.", avatar: "P" },
-  { name: "Rahul M.", college: "IIT Bombay", text: "Finally know my cost-per-wear. My black tee is basically free at this point 😂", avatar: "R" },
-  { name: "Ananya K.", college: "Delhi University", text: "The AI insights are scary accurate. It predicted I'd overspend before I did.", avatar: "A" },
+  { name: "Crystal Barty", college: "VN College", text: "Fenora literally saved my budget 😭💸 I didn’t even realize I was overspending until this!", avatar: "C" },
+  { name: "Khushi Dangi", college: "IIT Bombay", text: "Finally an app that gets student life 😩✨", avatar: "K" },
+  { name: "Daksha Mali", college: "Delhi University", text: "The AI insights are scary accurate. It predicted I'd overspend before I did.", avatar: "D" },
 ];
 
 function useScrollReveal() {
@@ -153,25 +153,24 @@ export default function Landing({ onGetStarted }) {
               {/* Headline */}
               <h1 style={{
                 margin: "0 0 22px",
-                lineHeight: 1.05, letterSpacing: "-2px",
+                lineHeight: 1.05, letterSpacing: "-1.5px",
                 opacity: heroVisible ? 1 : 0,
                 transform: heroVisible ? "translateY(0)" : "translateY(22px)",
                 transition: "all 0.7s ease 0.1s",
               }}>
-                <span style={{ fontSize: "clamp(40px, 6vw, 68px)", fontWeight: 900, color: "#18182e", display: "block" }}>
-                  Money in control.
+                <span style={{ fontSize: "clamp(46px, 6vw, 68px)", fontWeight: 900, color: "#18182e", display: "block" }}>
+                  Your money,
                 </span>
-                <span style={{ fontSize: "clamp(40px, 6vw, 68px)", fontWeight: 900, color: "#18182e", display: "block" }}>
-                  Life on{" "}
-                  <span style={{
+                <span style={{ fontSize: "clamp(46px, 6vw, 68px)", fontWeight: 900, color: "#18182e", display: "block" }}>
+                  but <span style={{
                     fontFamily: "'Playfair Display', serif",
                     fontStyle: "italic",
                     background: "linear-gradient(135deg, #6b5fa0, #9b8ec8, #c9a96e)",
                     backgroundSize: "200% 200%",
                     WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
                     animation: "gradientShift 4s ease infinite",
-                  }}>glow</span>
-                  {" "}✨
+                  }}>smarter</span>
+                  {" "}💸✨
                 </span>
               </h1>
 
@@ -183,7 +182,7 @@ export default function Landing({ onGetStarted }) {
                 transform: heroVisible ? "translateY(0)" : "translateY(18px)",
                 transition: "all 0.7s ease 0.2s",
               }}>
-                Connect your wardrobe and wallet. Built for Gen Z to track every rupee and every outfit — without the stress of spreadsheets.
+                Track it. Fix it. Glow up your finances. No more "where did my money go?" moments 😭
               </p>
 
               {/* CTAs */}
@@ -204,7 +203,7 @@ export default function Landing({ onGetStarted }) {
                   onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 14px 40px rgba(107,95,160,0.5)"; }}
                   onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 8px 28px rgba(107,95,160,0.42)"; }}
                 >
-                  Start Your Journey →
+                  Start your glow-up ✨
                 </button>
                 <button onClick={onGetStarted} style={{
                   background: "#fff", color: "#6b5fa0",
@@ -217,7 +216,7 @@ export default function Landing({ onGetStarted }) {
                   onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(107,95,160,0.35)"; e.currentTarget.style.background = "#faf9ff"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(107,95,160,0.18)"; e.currentTarget.style.background = "#fff"; }}
                 >
-                  Sign In
+                  Let's get rich (slowly) 💰
                 </button>
               </div>
 
@@ -304,7 +303,7 @@ export default function Landing({ onGetStarted }) {
         <div style={{ maxWidth: 1000, margin: "0 auto", padding: "0 32px" }}>
           {[
             {
-              icon: "💸", title: "Track your money", eyebrow: "Expense tracking",
+              icon: "💸", title: "Where did your money vanish today? 👀", eyebrow: "Expense tracking",
               body: "Know exactly where every rupee goes. Beautiful charts, category breakdowns, and monthly trends make your finances feel less scary and more empowering.",
               visual: <ExpenseVisual />,
               color: "#6b5fa0", flip: false,
@@ -316,7 +315,7 @@ export default function Landing({ onGetStarted }) {
               color: "#c9a96e", flip: true,
             },
             {
-              icon: "🤖", title: "Make smarter decisions", eyebrow: "AI insights",
+              icon: "🤖", title: "Are you surviving or thriving? 💀💸", eyebrow: "AI insights",
               body: "Your personal AI tracks patterns and flags overspending before it happens. Get weekly reports, anomaly alerts, and predictive forecasts — all automatically.",
               visual: <InsightVisual />,
               color: "#5aaa82", flip: false,
@@ -399,7 +398,7 @@ export default function Landing({ onGetStarted }) {
           <RevealSection>
             <div style={{ textAlign: "center", marginBottom: 48 }}>
               <h2 style={{ fontSize: "clamp(26px, 3.5vw, 38px)", fontWeight: 900, color: "#18182e", letterSpacing: "-0.8px", margin: 0 }}>
-                Students love it.
+                What students are saying 💬
               </h2>
             </div>
           </RevealSection>

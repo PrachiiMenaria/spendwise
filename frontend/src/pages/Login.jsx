@@ -22,13 +22,12 @@ export default function Login({ onLogin, onBack }) {
         body: JSON.stringify({
           name: form.name, email: form.email,
           password: form.password,
-          monthly_budget: parseFloat(form.budget) || 10000,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Something went wrong");
       const userObj = data.user || { id: data.user_id, name: data.name || form.name };
-      onLogin({ user_id: userObj.id, name: userObj.name || form.name, budget: data.budget || parseFloat(form.budget) || 10000 });
+      onLogin({ user_id: userObj.id, name: userObj.name || form.name, budget: data.budget || null });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -175,15 +174,12 @@ export default function Login({ onLogin, onBack }) {
                     {showPass ? "🙈" : "👁️"}
                   </button>
                 </div>
+                {mode === "login" && (
+                  <div style={{ textAlign: "right", marginTop: 6 }}>
+                    <a href="/forgot-password" onClick={(e) => { e.preventDefault(); window.location.href = '/forgot-password'; }} style={{ fontSize: 11, color: "#6b5fa0", textDecoration: "none", fontWeight: 600 }}>Forgot Password?</a>
+                  </div>
+                )}
               </div>
-              {mode === "register" && (
-                <div>
-                  <label style={labelStyle}>Monthly Budget (₹)</label>
-                  <input style={inputStyle} type="number" name="budget" placeholder="e.g. 10000" value={form.budget}
-                    onChange={e => setForm({ ...form, budget: e.target.value })} />
-                  <span style={{ fontSize: 11, color: "#b0aec8", marginTop: 5, display: "block" }}>You can change this anytime</span>
-                </div>
-              )}
               <button type="submit" disabled={loading} style={{
                 background: loading ? "#b0aec8" : "linear-gradient(135deg, #6b5fa0, #9b8ec8)",
                 color: "#fff", border: "none", borderRadius: 14, padding: "14px",

@@ -7,7 +7,6 @@ const Register = ({ setIsAuthenticated, setUser }) => {
     name: '',
     email: '',
     password: '',
-    monthly_budget: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -84,19 +83,6 @@ const Register = ({ setIsAuthenticated, setUser }) => {
               onChange={handleChange('email')}
               className="w-full px-4 py-3 rounded-xl border border-secondary/50 bg-white/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-dark"
               placeholder="you@example.com"
-              disabled={loading}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-dark/80 mb-2">Monthly Budget (₹)</label>
-            <input
-              type="number"
-              required
-              min="0"
-              value={formData.monthly_budget}
-              onChange={handleChange('monthly_budget')}
-              className="w-full px-4 py-3 rounded-xl border border-secondary/50 bg-white/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-dark"
-              placeholder="10000"
               disabled={loading}
             />
           </div>

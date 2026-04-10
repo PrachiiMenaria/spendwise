@@ -50,87 +50,103 @@ function DonutChart({ data }) {
   );
 }
 
-// ── Mood Chart ───────────────────────────────────────────────────
-function MoodChart({ data, counts }) {
-  const MOODS = [
-    { key: "happy", emoji: "😊", label: "Happy", color: "#3db88a" },
-    { key: "sad", emoji: "😔", label: "Sad", color: "#4a9ede" },
-    { key: "stressed", emoji: "😤", label: "Stressed", color: "#e05c7d" },
-    { key: "neutral", emoji: "😑", label: "Neutral", color: "#c9a96e" },
-    { key: "excited", emoji: "🤩", label: "Excited", color: "#6d4fc2" },
-    { key: "bored", emoji: "😒", label: "Bored", color: "#a89cc8" },
-  ];
-  if (!data || Object.keys(data).length === 0) return (
-    <div style={{ textAlign: "center", padding: "20px", color: "#b0aec8", fontSize: 12 }}>
-      Select a mood when adding expenses to see patterns here 😊
-    </div>
-  );
-  const maxVal = Math.max(...MOODS.map(m => data[m.key] || 0), 1);
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {MOODS.filter(m => data[m.key] > 0).map(m => (
-        <div key={m.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 18, flexShrink: 0 }}>{m.emoji}</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: "#3d3a52" }}>{m.label}</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: m.color }}>{formatINR(data[m.key])}</span>
-            </div>
-            <div style={{ height: 6, background: "#f0edf8", borderRadius: 100, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${(data[m.key] / maxVal) * 100}%`, background: m.color, borderRadius: 100, transition: "width 0.8s ease" }} />
-            </div>
-            {counts && counts[m.key] && (
-              <div style={{ fontSize: 9, color: "#b0aec8", marginTop: 2 }}>{counts[m.key]} transactions · avg {formatINR(Math.round(data[m.key] / counts[m.key]))}/transaction</div>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+// ── Monthly Spending Calendar ───────────────────────────────────────
+function MonthlySpendingCalendar({ data }) {
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [tooltip, setTooltip] = useState(null);
 
-// ── Spending Heatmap ──────────────────────────────────────────────
-function SpendingHeatmap({ data }) {
-  if (!data || data.length === 0) return (
-    <div style={{ textAlign: "center", padding: "20px", color: "#b0aec8", fontSize: 12 }}>Log expenses to see your spending calendar 📅</div>
-  );
-  const COLORS = { 0: "#f0edf8", 1: "#c3b8e8", 2: "#9c89d4", 3: "#7355c2", 4: "#4d2a9e" };
-  const weeks = [];
-  let currentWeek = [];
-  const firstDay = new Date(data[0].date).getDay();
-  for (let i = 0; i < firstDay; i++) currentWeek.push(null);
-  data.forEach(d => {
-    currentWeek.push(d);
-    if (currentWeek.length === 7) { weeks.push(currentWeek); currentWeek = []; }
-  });
-  if (currentWeek.length > 0) weeks.push(currentWeek);
+  const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const monthName = new Date(viewYear, viewMonth).toLocaleString("default", { month: "long", year: "numeric" });
+
+  const dataMap = {};
+  (data || []).forEach(d => { dataMap[d.date] = d.amount || 0; });
+
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const pad = n => String(n).padStart(2, "0");
+  const amounts = (data || []).map(d => d.amount || 0).filter(v => v > 0);
+  const maxAmt = amounts.length > 0 ? Math.max(...amounts) : 1;
+
+  const getColor = (amt) => {
+    if (!amt || amt === 0) return "transparent";
+    const intensity = Math.min(amt / maxAmt, 1);
+    if (intensity < 0.25) return "#d4f0df"; // light green
+    if (intensity < 0.5)  return "#f0e6d4"; // yellow/orange
+    if (intensity < 0.75) return "#f0b8b8"; // light red
+    return "#e07070"; // high red
+  };
+
+  const prevMonth = () => { if (viewMonth === 0) { setViewYear(v => v - 1); setViewMonth(11); } else setViewMonth(v => v - 1); };
+  const nextMonth = () => {
+    if (viewYear > today.getFullYear() || (viewYear === today.getFullYear() && viewMonth >= today.getMonth())) return;
+    if (viewMonth === 11) { setViewYear(v => v + 1); setViewMonth(0); } else setViewMonth(v => v + 1);
+  };
+  const isCurrentMonth = viewYear === today.getFullYear() && viewMonth === today.getMonth();
+
   return (
-    <div style={{ overflowX: "auto" }}>
-      <div style={{ display: "flex", gap: 3 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 3, marginRight: 4 }}>
-          {["S","M","T","W","T","F","S"].map((d, i) => (
-            <div key={i} style={{ height: 12, fontSize: 7.5, color: "#b0aec8", fontWeight: 600, lineHeight: "12px", visibility: i % 2 === 0 ? "visible" : "hidden" }}>{d}</div>
-          ))}
-        </div>
-        {weeks.map((week, wi) => (
-          <div key={wi} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            {Array.from({ length: 7 }, (_, di) => {
-              const cell = week[di];
-              if (!cell) return <div key={di} style={{ width: 12, height: 12 }} />;
-              return (
-                <div key={di} title={`${cell.date}: ${formatINR(cell.amount)}`} style={{ width: 12, height: 12, borderRadius: 2, background: COLORS[cell.level] || COLORS[0], cursor: "default", transition: "transform 0.1s" }}
-                  onMouseEnter={e => e.currentTarget.style.transform = "scale(1.4)"}
-                  onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
-                />
-              );
-            })}
-          </div>
+    <div style={{ maxWidth: 350, margin: "0 auto", padding: "0 8px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <button onClick={prevMonth} style={{ background: "#f0eef8", border: "none", borderRadius: 6, width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 14, color: "#7c6fa0" }}>‹</button>
+        <span style={{ fontWeight: 700, fontSize: 12, color: "#1a1a2e" }}>{monthName}</span>
+        <button onClick={nextMonth} disabled={isCurrentMonth} style={{ background: "#f0eef8", border: "none", borderRadius: 6, width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 14, color: "#7c6fa0", opacity: isCurrentMonth ? 0.3 : 1 }}>›</button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 2 }}>
+        {["S","M","T","W","T","F","S"].map((d, i) => (
+          <div key={i} style={{ textAlign: "center", fontSize: 8, fontWeight: 700, color: "#b0aec8", padding: "2px 0" }}>{d}</div>
         ))}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 8, justifyContent: "flex-end" }}>
-        <span style={{ fontSize: 8, color: "#b0aec8" }}>Less</span>
-        {[0,1,2,3,4].map(l => <div key={l} style={{ width: 10, height: 10, borderRadius: 2, background: COLORS[l] }} />)}
-        <span style={{ fontSize: 8, color: "#b0aec8" }}>More</span>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, position: "relative" }}>
+        {cells.map((day, i) => {
+          if (!day) return <div key={i} />;
+          const dateStr = `${viewYear}-${pad(viewMonth + 1)}-${pad(day)}`;
+          const amt = dataMap[dateStr] || 0;
+          const isToday = day === today.getDate() && isCurrentMonth;
+          const hasSpend = amt > 0;
+          return (
+            <div
+              key={i}
+              onMouseEnter={e => hasSpend && setTooltip({ day, amt, x: e.clientX, y: e.clientY, date: dateStr })}
+              onMouseLeave={() => setTooltip(null)}
+              style={{
+                aspectRatio: "1", borderRadius: 4,
+                background: hasSpend ? getColor(amt) : isToday ? "#f0eef8" : "#faf9ff",
+                border: isToday ? "1.5px solid #7c6fa0" : "1px solid rgba(124,111,160,0.04)",
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                cursor: hasSpend ? "pointer" : "default", transition: "transform 0.1s",
+              }}
+              onMouseOver={e => { if (hasSpend) e.currentTarget.style.transform = "scale(1.1)"; }}
+              onMouseOut={e => { e.currentTarget.style.transform = "scale(1)"; setTooltip(null); }}
+            >
+              <span style={{ fontSize: 9, fontWeight: isToday ? 800 : 600, color: hasSpend && getColor(amt) !== "#d4f0df" ? "#fff" : "#1a1a2e" }}>{day}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {tooltip && (
+        <div style={{
+          position: "fixed", top: tooltip.y - 45, left: tooltip.x - 50,
+          background: "#1a1a2e", color: "#fff", borderRadius: 6, padding: "4px 10px",
+          fontSize: 10, fontWeight: 600, pointerEvents: "none", zIndex: 9999,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+        }}>
+          {tooltip.date}: {formatINR(tooltip.amt)}
+        </div>
+      )}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 10, justifyContent: "flex-end" }}>
+        <span style={{ fontSize: 8, color: "#b0aec8" }}>Low</span>
+        {["#d4f0df","#f0e6d4","#f0b8b8","#e07070"].map((c, i) => (
+          <div key={i} style={{ width: 8, height: 8, borderRadius: 2, background: c }} />
+        ))}
+        <span style={{ fontSize: 8, color: "#b0aec8" }}>High</span>
       </div>
     </div>
   );
@@ -252,9 +268,7 @@ export default function Insights() {
     wardData: null,
     heatmap: [],
     streak: null,
-    personality: null,
     weeklyReport: null,
-    moodData: null,
   });
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState({});
@@ -280,11 +294,9 @@ export default function Insights() {
         safe("expSummary", `${API}/api/expense-summary`),
         safe("aiData", `${API}/api/ai-analysis`),
         safe("wardData", `${API}/api/wardrobe-data`),
-        safe("heatmap", `${API}/api/heatmap?days=90`),
+        safe("heatmap", `${API}/api/expenses/calendar`),
         safe("streak", `${API}/api/streak`),
-        safe("personality", `${API}/api/personality`),
         safe("weeklyReport", `${API}/api/weekly-report`),
-        safe("moodData", `${API}/api/mood-analytics`),
       ]);
 
       const newData = {};
@@ -298,7 +310,7 @@ export default function Insights() {
     fetchAll();
   }, []);
 
-  const { summary, expSummary, aiData, wardData, heatmap, streak, personality, weeklyReport, moodData } = data;
+  const { summary, expSummary, aiData, wardData, heatmap, streak, personality, weeklyReport } = data;
   const budget = summary?.budget || 0;
   const spent = summary?.this_month_total || 0;
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
@@ -417,29 +429,8 @@ export default function Insights() {
       </div>
 
       {/* Spending Heatmap */}
-      <SCard title="90-Day Spending Calendar" icon="📆">
-        <SpendingHeatmap data={heatmap} />
-      </SCard>
-
-      {/* Mood Analytics — FIXED: new endpoint */}
-      <SCard title="Mood-Based Spending" icon="😊">
-        {moodData ? (
-          <>
-            <MoodChart data={moodData.mood_totals} counts={moodData.mood_counts} />
-            {moodData.insights && moodData.insights.length > 0 && (
-              <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-                {moodData.insights.map((ins, i) => (
-                  <div key={i} style={{ background: "#fdf8e8", border: "1px solid #f5e4b8", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#6b6888" }}>{ins}</div>
-                ))}
-              </div>
-            )}
-            {Object.keys(moodData.mood_totals || {}).length === 0 && (
-              <div style={{ color: "#b0aec8", fontSize: 12, textAlign: "center", padding: "12px 0" }}>
-                Select a mood when adding expenses to unlock mood spending patterns!
-              </div>
-            )}
-          </>
-        ) : <div style={{ color: "#b0aec8", fontSize: 12, textAlign: "center", padding: "12px 0" }}>Tag your expenses with moods to see patterns here.</div>}
+      <SCard title="Full-Month Spending Calendar" icon="📆">
+        <MonthlySpendingCalendar data={heatmap} />
       </SCard>
 
       {/* AI Insights */}

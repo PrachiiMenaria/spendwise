@@ -10,7 +10,6 @@ Just copy the 3 marked blocks into your app.py — nothing else changes.
 # BLOCK 1 — Add this import near the top of app.py
 #            (after your existing imports)
 # ════════════════════════════════════════════════════════
-from chatbot import chatbot_bp
 
 # ════════════════════════════════════════════════════════
 # BLOCK 2 — Register the blueprint (after app = Flask(__name__))

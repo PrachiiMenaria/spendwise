@@ -113,7 +113,7 @@ function BudgetBar({ spent, budget }) {
         <span style={{ fontSize: 12, color: "#9898b8", fontWeight: 600 }}>Spent</span>
         <span style={{ fontSize: 12, color: "#9898b8", fontWeight: 600 }}>Budget</span>
       </div>
-      <div style={{ display: "flex", gap: 10, alignItems: "flex-end", height: 80 }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-end", height: 50 }}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 11, fontWeight: 800, color: over ? "#e07070" : "#7c6fa0" }}>{formatINR(spent)}</span>
           <div style={{ width: "100%", background: over ? "linear-gradient(180deg,#e07070,#ff9999)" : "linear-gradient(180deg,#7c6fa0,#a89cc8)", borderRadius: "6px 6px 0 0", height: `${Math.min(pct, 100)}%` }} />
@@ -148,9 +148,9 @@ function EditBudgetWidget({ currentBudget, onSave }) {
     if (!amt || amt <= 0) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API}/api/update-budget`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        credentials: "include", body: JSON.stringify({ monthly_budget: amt }),
+      const res = await fetch(`${API}/api/budget/update`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        credentials: "include", body: JSON.stringify({ budget: amt }),
       });
       if (res.ok) {
         setSaved(true); setEditing(false);
@@ -178,15 +178,17 @@ function EditBudgetWidget({ currentBudget, onSave }) {
     </div>
   );
 
+  const hasBudget = currentBudget > 0;
   return (
-    <button onClick={open} title="Edit monthly budget" style={{
+    <button onClick={open} title={hasBudget ? "Edit monthly budget" : "Set monthly budget"} style={{
       display: "flex", alignItems: "center", gap: 5,
-      background: saved ? "#eaf6ef" : "#f0eef8", border: "none",
+      background: saved ? "#eaf6ef" : hasBudget ? "#f0eef8" : "linear-gradient(135deg,#7c6fa0,#a89cc8)", 
+      border: "none",
       borderRadius: 8, padding: "6px 12px", fontSize: 11, fontWeight: 700,
-      color: saved ? "#6aaa8a" : "#7c6fa0", cursor: "pointer", fontFamily: "inherit",
+      color: saved ? "#6aaa8a" : hasBudget ? "#7c6fa0" : "#fff", cursor: "pointer", fontFamily: "inherit",
       transition: "all 0.2s",
     }}>
-      {saved ? "✓ Saved!" : "✏️ Edit Budget"}
+      {saved ? "✓ Saved!" : hasBudget ? "✏️ Edit Budget" : "+ Set Budget"}
     </button>
   );
 }
@@ -663,9 +665,9 @@ export default function Dashboard({ user }) {
   const handleBudgetSave = async (amount) => {
     setApplyingBudget(true);
     try {
-      const res = await fetch(`${API}/api/update-budget`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        credentials: "include", body: JSON.stringify({ monthly_budget: amount }),
+      const res = await fetch(`${API}/api/budget/update`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        credentials: "include", body: JSON.stringify({ budget: amount }),
       });
       if (res.ok) {
         const s = await fetch(`${API}/api/get-summary`, { credentials: "include" }).then(r => r.json());
@@ -691,8 +693,8 @@ export default function Dashboard({ user }) {
   const allInsights = [...(aiData?.expense_insights || []), ...(aiData?.wardrobe_insights || [])].slice(0, 4);
 
   const statCards = [
-    { label: "Monthly Budget", value: formatINR(budget), sub: `${pct.toFixed(0)}% used`, icon: "💰", accent: "#7c6fa0", bar: true, pct, danger: pct > 85 },
-    { label: "Spent This Month", value: formatINR(spent), sub: `${formatINR(remaining)} left`, icon: "📤", accent: pct > 85 ? "#e07070" : "#c9a96e" },
+    { label: "Monthly Budget", value: budget > 0 ? formatINR(budget) : "Not Set", sub: budget > 0 ? `${pct.toFixed(0)}% used` : "No limit set", icon: "💰", accent: "#7c6fa0", bar: budget > 0, pct, danger: pct > 85, isBudgetCard: true },
+    { label: "Spent This Month", value: formatINR(spent), sub: budget > 0 ? `${formatINR(remaining)} left` : "Total spent", icon: "📤", accent: pct > 85 ? "#e07070" : "#c9a96e" },
     { label: "Wardrobe Items",   value: wardData?.total_items || 0, sub: `Value ${formatINR(wardData?.total_value || 0)}`, icon: "👗", accent: "#a89cc8" },
     { label: "Never Worn",       value: summary?.never_worn_count || 0, sub: (summary?.never_worn_count || 0) > 0 ? "sitting idle" : "All worn ✓", icon: "⚠️", accent: (summary?.never_worn_count || 0) > 0 ? "#e07070" : "#6aaa8a" },
   ];
@@ -732,11 +734,18 @@ export default function Dashboard({ user }) {
             <div style={{ position: "absolute", top: 12, right: 14, fontSize: 20, opacity: 0.65 }}>{card.icon}</div>
             <div style={{ fontSize: 10, color: "#9898b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>{card.label}</div>
             <div style={{ fontSize: 19, fontWeight: 800, color: card.accent, letterSpacing: "-0.5px" }}>{card.value}</div>
-            <div style={{ fontSize: 11, color: "#b0aec8", marginTop: 3 }}>{card.sub}</div>
-            {card.bar && (
-              <div style={{ marginTop: 8, background: "#f0eef8", borderRadius: 100, height: 5, overflow: "hidden" }}>
-                <div style={{ width: `${card.pct}%`, height: "100%", borderRadius: 100, background: card.danger ? "linear-gradient(90deg,#e07070,#ff9999)" : "linear-gradient(90deg,#7c6fa0,#a89cc8)", transition: "width 1.2s ease" }} />
-              </div>
+            
+            {card.isBudgetCard && (!budget || budget === 0) ? (
+              <div style={{ marginTop: 10 }}><EditBudgetWidget currentBudget={budget} onSave={handleBudgetSave} /></div>
+            ) : (
+              <>
+                <div style={{ fontSize: 11, color: "#b0aec8", marginTop: 3 }}>{card.sub}</div>
+                {card.bar && (
+                  <div style={{ marginTop: 8, background: "#f0eef8", borderRadius: 100, height: 5, overflow: "hidden" }}>
+                    <div style={{ width: `${card.pct}%`, height: "100%", borderRadius: 100, background: card.danger ? "linear-gradient(90deg,#e07070,#ff9999)" : "linear-gradient(90deg,#7c6fa0,#a89cc8)", transition: "width 1.2s ease" }} />
+                  </div>
+                )}
+              </>
             )}
           </div>
         ))}
