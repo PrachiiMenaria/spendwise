@@ -29,7 +29,7 @@ const features = [
 ];
 
 const testimonials = [
-  { name: "Crystal Barty", college: "VN College", text: "Fenora literally saved my budget 😭💸 I didn’t even realize I was overspending until this!", avatar: "C" },
+  { name: "Payal Rao", college: "VN College", text: "Fenora literally saved my budget 😭💸 I didn’t even realize I was overspending until this!", avatar: "C" },
   { name: "Khushi Dangi", college: "IIT Bombay", text: "Finally an app that gets student life 😩✨", avatar: "K" },
   { name: "Daksha Mali", college: "Delhi University", text: "The AI insights are scary accurate. It predicted I'd overspend before I did.", avatar: "D" },
 ];

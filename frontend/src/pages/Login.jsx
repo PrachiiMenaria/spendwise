@@ -1,7 +1,7 @@
 // fenora/frontend/src/pages/Login.jsx — UPGRADED
 import { useState } from "react";
 
-const API = "http://localhost:5000";
+const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 export default function Login({ onLogin, onBack }) {
   const [mode, setMode] = useState("login");

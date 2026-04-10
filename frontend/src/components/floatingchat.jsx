@@ -1,7 +1,7 @@
 // fenora/frontend/src/components/floatingchat.jsx — PHASE 3: Claude AI + "Can I Afford This?"
 import { useState, useRef, useEffect } from "react";
 
-const API = "http://localhost:5000";
+const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 // ── Claude API caller ─────────────────────────────────────────────
 async function callClaude(systemPrompt, userMessage) {
@@ -163,20 +163,16 @@ Give a clear YES or NO answer with specific reasoning. Be honest even if the ans
       let reply = "";
       try {
         reply = await callClaude(systemPrompt, messageToSend);
-      } catch {
+      } catch (err) {
+        console.error("Chat backend fallback error:", err);
         // Fallback to backend
-        const keyMap = {
-          "budget": "budget",
-          "reduce": "reduce",
-          "avoid": "avoid",
-          "afford_2000": "budget",
-        };
-        const backendKey = keyMap[text] || text;
-        const res = await fetch(`${API}/api/chat`, {
+        const res = await fetch(`${API}/api/smart-chat`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          credentials: "include", body: JSON.stringify({ question_key: backendKey }),
+          credentials: "include", body: JSON.stringify({ message: text }),
         });
+        if (!res.ok) throw new Error("Fallback API failed: " + res.status);
         const data = await res.json();
+        if (data.error) throw new Error(data.error);
         reply = data.reply || "Couldn't process that. Please try again.";
       }
 
@@ -186,7 +182,8 @@ Give a clear YES or NO answer with specific reasoning. Be honest even if the ans
       };
       setMessages(prev => [...prev, aiMsg]);
       if (!open) setUnread(u => u + 1);
-    } catch {
+    } catch (err) {
+      console.error("Total chat failure:", err);
       setMessages(prev => [...prev, {
         role: "assistant",
         text: "Couldn't reach the server. Make sure you're logged in.",

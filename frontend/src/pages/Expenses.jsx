@@ -1,7 +1,7 @@
 // fenora/frontend/src/pages/Expenses.jsx
 import { useState, useEffect } from "react";
 
-const API = "http://localhost:5000";
+const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 function formatINR(n) {
   return "₹" + Number(n || 0).toLocaleString("en-IN");

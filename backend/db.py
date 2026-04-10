@@ -9,6 +9,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def get_connection():
+    db_url = os.getenv("DATABASE_URL")
+    if db_url:
+        return psycopg2.connect(db_url, sslmode="require")
+    # Fallback for local development
     return psycopg2.connect(
         host=os.getenv("DB_HOST", "localhost"),
         database=os.getenv("DB_NAME", "wardrobe_db"),

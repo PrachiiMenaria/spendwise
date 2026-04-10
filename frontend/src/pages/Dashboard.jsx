@@ -480,20 +480,16 @@ function SmartChat({ budget, spent, remaining }) {
         method: "POST", headers: { "Content-Type": "application/json" },
         credentials: "include", body: JSON.stringify({ message: msg }),
       });
-      const data = await res.json();
-      setMessages(prev => [...prev, { role: "ai", text: data.reply || "Something went wrong." }]);
-    } catch {
-      // fallback to old endpoint
-      try {
-        const res2 = await fetch(`${API}/api/chat`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          credentials: "include", body: JSON.stringify({ question_key: msg }),
-        });
-        const d2 = await res2.json();
-        setMessages(prev => [...prev, { role: "ai", text: d2.reply || "Could not reach AI." }]);
-      } catch {
-        setMessages(prev => [...prev, { role: "ai", text: "Could not connect to AI. Check your backend." }]);
+      if (!res.ok) {
+        console.error("Chat API error on smart-chat:", res.status);
+        throw new Error("Chat API failed with status " + res.status);
       }
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setMessages(prev => [...prev, { role: "ai", text: data.reply || "Something went wrong." }]);
+    } catch (err) {
+      console.error("Chat complete failure:", err);
+      setMessages(prev => [...prev, { role: "ai", text: `Chat Error: ${err.message}` }]);
     }
     setLoading(false);
   };

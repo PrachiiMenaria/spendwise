@@ -34,12 +34,7 @@ app.config["PERMANENT_SESSION_LIFETIME"] = 86400 * 7  # 7 days
 
 CORS(app,
      supports_credentials=True,
-     origins=[
-         "http://localhost:5173", "http://127.0.0.1:5173",
-         "http://localhost:5174", "http://127.0.0.1:5174",
-         "http://localhost:5175", "http://127.0.0.1:5175",
-         "http://localhost:3000", "http://127.0.0.1:3000",
-     ],
+     origins="*",
      allow_headers=["Content-Type", "Authorization"],
      methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 )
@@ -1637,25 +1632,7 @@ def api_smart_chat():
                     + ("You're pacing well! 🟢" if budget > 0 and daily_avg <= budget / 30 else "Consider slowing down this week. 🔴" if budget > 0 else "")
                 )
 
-        # ── MOOD SPENDING ─────────────────────────────────────────
-        elif any(w in message for w in ["mood", "stress", "emotional", "sad", "happy", "impulse"]):
-            if not mood_totals:
-                reply = "No mood-tagged expenses yet! When you log an expense, select your mood to see patterns. You might discover you spend more when stressed 😤"
-            else:
-                stressed = mood_totals.get("stressed", 0)
-                happy = mood_totals.get("happy", 0)
-                total_mood = sum(mood_totals.values())
-                stress_pct = (stressed / total_mood * 100) if total_mood > 0 else 0
-                if stressed > happy and stressed > 500:
-                    reply = (
-                        f"😤 Interesting pattern: you've spent ₹{stressed:,.0f} when stressed this month "
-                        f"({stress_pct:.0f}% of mood-tagged expenses). "
-                        f"Next time you're stressed, try a 15-min walk before buying anything — it really works!"
-                    )
-                else:
-                    mood_str = ", ".join(f"{k}: ₹{v:,.0f}" for k, v in sorted(mood_totals.items(), key=lambda x: -x[1])[:3])
-                    reply = f"Your mood-linked spending: {mood_str}. Keep tagging your moods — patterns become clearer over time!"
-
+        # ── OMITTED MOOD SPENDING (Schema updated) ────────────────
         # ── GOALS ─────────────────────────────────────────────────
         elif any(w in message for w in ["goal", "goals", "target", "save for", "saving for"]):
             if not goals:
@@ -1694,13 +1671,13 @@ def api_smart_chat():
                     + "Ask me anything — 'Can I afford ₹2000?', 'Where am I spending most?', 'How to save?'"
                 )
 
+        return jsonify({"reply": reply, "data": ctx})
+
     except Exception as e:
+        import traceback
+        print("Chat trace:", traceback.format_exc())
         logger.error(f"Smart chat error: {e}")
-        reply = "Something went wrong fetching your data. Make sure you have some expenses logged!"
-        ctx = {}
-
-    return jsonify({"reply": reply, "data": ctx})
-
+        return jsonify({"error": str(e)}), 500
 
 # ─────────────────────────────────────────────────────────────────────
 # FIX 2 — SAVINGS GOALS with daily/monthly calculation
