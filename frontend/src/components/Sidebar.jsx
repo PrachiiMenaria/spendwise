@@ -21,6 +21,7 @@ export default function Sidebar({ setIsAuthenticated, user, onLogout }) {
       else if (setIsAuthenticated) setIsAuthenticated(false);
       navigate("/login");
     }
+    
   };
 
   const userName = user?.name || "Student";

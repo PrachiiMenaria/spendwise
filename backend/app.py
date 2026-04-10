@@ -11,7 +11,7 @@ from decimal import Decimal
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-
+from chatbot_engine import handle_chat_message
 from flask import Flask, request, session, jsonify
 from flask_cors import CORS
 import psycopg2
@@ -20,11 +20,24 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 # ─── App Setup ────────────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app, supports_credentials=True, origins=[
-    "http://localhost:5173", "http://127.0.0.1:5173",
-    "http://localhost:3000", "http://127.0.0.1:3000",
-])
+
+# ── Session & Cookie config — FIXES 401 on cross-origin requests ──
 app.secret_key = os.getenv("SECRET_KEY", "fenora_2026_change_in_prod")
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = False      # False for http://localhost
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_PATH"] = "/"
+app.config["PERMANENT_SESSION_LIFETIME"] = 86400 * 7  # 7 days
+
+CORS(app,
+     supports_credentials=True,
+     origins=[
+         "http://localhost:5173", "http://127.0.0.1:5173",
+         "http://localhost:3000", "http://127.0.0.1:3000",
+     ],
+     allow_headers=["Content-Type", "Authorization"],
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -104,6 +117,7 @@ def api_register():
             )
             uid = cur.fetchone()[0]
         conn.close()
+        session.permanent = True
         session.update(user_id=uid, user_name=name, user_email=email)
         return jsonify({
             "message": f"Welcome {name}!",
@@ -130,6 +144,7 @@ def api_login():
     conn.close()
 
     if user and check_password_hash(user["password_hash"], pwd):
+        session.permanent = True
         session.update(user_id=user["id"], user_name=user["name"], user_email=user["email"])
         return jsonify({
             "message": f"Welcome back, {user['name']}!",
@@ -248,7 +263,7 @@ def api_expenses_get():
     conn = get_db()
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            "SELECT id, amount, category, note, created_at FROM expenses "
+            "SELECT id, amount, category, note, mood, created_at FROM expenses "
             "WHERE user_id=%s ORDER BY created_at DESC LIMIT 200",
             (uid,),
         )
@@ -265,27 +280,36 @@ def api_expenses_post():
     amount = float(data.get("amount", 0) or 0)
     category = data.get("category", "Others")
     note = data.get("note", "")
+    mood = data.get("mood", "") or ""
 
     if amount <= 0:
         return jsonify({"error": "Amount must be > 0"}), 400
 
     conn = get_db()
     with conn, conn.cursor() as cur:
-        # Try new schema first, fallback to old
+        # Try new schema first (with mood), fallback to old
         try:
             cur.execute(
-                "INSERT INTO expenses(user_id, amount, category, note) "
-                "VALUES(%s,%s,%s,%s) RETURNING id",
-                (uid, amount, category, note),
+                "INSERT INTO expenses(user_id, amount, category, note, mood) "
+                "VALUES(%s,%s,%s,%s,%s) RETURNING id",
+                (uid, amount, category, note, mood if mood else None),
             )
         except Exception:
             conn.rollback()
             today = datetime.now()
-            cur.execute(
-                "INSERT INTO expenses(user_id, amount, category, note, expense_month, expense_year) "
-                "VALUES(%s,%s,%s,%s,%s,%s) RETURNING id",
-                (uid, amount, category, note, today.month, today.year),
-            )
+            try:
+                cur.execute(
+                    "INSERT INTO expenses(user_id, amount, category, note) "
+                    "VALUES(%s,%s,%s,%s) RETURNING id",
+                    (uid, amount, category, note),
+                )
+            except Exception:
+                conn.rollback()
+                cur.execute(
+                    "INSERT INTO expenses(user_id, amount, category, note, expense_month, expense_year) "
+                    "VALUES(%s,%s,%s,%s,%s,%s) RETURNING id",
+                    (uid, amount, category, note, today.month, today.year),
+                )
         eid = cur.fetchone()[0]
     conn.close()
     return jsonify({"message": "Added", "id": eid}), 201
@@ -1132,9 +1156,1448 @@ def api_outfit_logs_post():
     except Exception as e:
         logger.error(f"Outfit log error: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+
+import re
+import calendar as cal_module
+
+# ─────────────────────────────────────────────────────────────────────
+# FIX 1 — AI CHAT (dynamic, free-text, data-driven)
+# Replace the existing /api/chat route entirely.
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/smart-chat", methods=["POST"])
+@login_required
+def api_smart_chat():
+    """
+    Fully dynamic AI chat — understands free-text questions and
+    answers with real user data. No more generic responses.
+
+    Accepted JSON: { "message": "Can I afford ₹2000?" }
+    Returns:       { "reply": "...", "data": {...} }
+    """
+    uid = get_uid()
+    data = request.json or {}
+    message = (data.get("message") or data.get("question_key") or "").strip().lower()
+
+    if not message:
+        return jsonify({"reply": "What would you like to know about your finances?"}), 400
+
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        today = datetime.now()
+
+        # ── Fetch all user data ────────────────────────────────────
+        cur.execute("SELECT monthly_budget, name FROM users WHERE id=%s", (uid,))
+        u = cur.fetchone()
+        budget = _f(u["monthly_budget"] if u else 0)
+        name = (u.get("name") or "there").split()[0] if u else "there"
+
+        # This month spending
+        cur.execute(
+            "SELECT COALESCE(SUM(amount),0) AS t FROM expenses "
+            "WHERE user_id=%s AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s",
+            (uid, today.month, today.year),
+        )
+        spent = _f(cur.fetchone()["t"])
+        remaining = max(0.0, budget - spent)
+        budget_pct = (spent / budget * 100) if budget > 0 else 0
+
+        # Category breakdown this month
+        cur.execute(
+            "SELECT category, COALESCE(SUM(amount),0) AS total FROM expenses "
+            "WHERE user_id=%s AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s "
+            "GROUP BY category ORDER BY total DESC",
+            (uid, today.month, today.year),
+        )
+        cats = {r["category"]: _f(r["total"]) for r in cur.fetchall()}
+        top_cat = max(cats.items(), key=lambda x: x[1]) if cats else None
+
+        # Last month
+        last_m = today.replace(day=1) - timedelta(days=1)
+        cur.execute(
+            "SELECT COALESCE(SUM(amount),0) AS t FROM expenses "
+            "WHERE user_id=%s AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s",
+            (uid, last_m.month, last_m.year),
+        )
+        last_month_spent = _f(cur.fetchone()["t"])
+
+        # Wardrobe
+        cur.execute("SELECT COUNT(*) AS c FROM wardrobe_items WHERE user_id=%s AND wear_count=0", (uid,))
+        never_worn = int(cur.fetchone()["c"])
+
+        # Last 7 days
+        week_start = today - timedelta(days=7)
+        cur.execute(
+            "SELECT COALESCE(SUM(amount),0) AS t FROM expenses "
+            "WHERE user_id=%s AND created_at >= %s",
+            (uid, week_start),
+        )
+        week_spent = _f(cur.fetchone()["t"])
+
+        # Mood spending
+        cur.execute(
+            "SELECT mood, COALESCE(SUM(amount),0) AS t FROM expenses "
+            "WHERE user_id=%s AND mood IS NOT NULL AND mood != '' "
+            "AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s "
+            "GROUP BY mood",
+            (uid, today.month, today.year),
+        )
+        mood_totals = {r["mood"]: _f(r["t"]) for r in cur.fetchall()}
+
+        # Savings goals
+        cur.execute(
+            "SELECT * FROM savings_goals WHERE user_id=%s ORDER BY created_at DESC LIMIT 3",
+            (uid,),
+        )
+        goals = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        # ── Intent detection + reply ───────────────────────────────
+
+        # Extract rupee amount from message (e.g. "2000", "₹2000", "2,000")
+        amount_match = re.search(r"[₹rs\s]?\s*(\d[\d,]*)", message.replace(",", ""))
+        asked_amount = float(amount_match.group(1).replace(",", "")) if amount_match else 0
+
+        reply = ""
+        ctx = {
+            "budget": budget, "spent": spent, "remaining": remaining,
+            "budget_pct": budget_pct, "week_spent": week_spent,
+        }
+
+        # ── AFFORD CHECK ──────────────────────────────────────────
+        if any(w in message for w in ["afford", "can i buy", "should i buy", "worth buying", "is it okay to buy"]):
+            if asked_amount > 0:
+                if asked_amount <= remaining:
+                    pct_of_remaining = (asked_amount / remaining * 100) if remaining > 0 else 100
+                    if pct_of_remaining > 60:
+                        reply = (
+                            f"Technically yes — ₹{asked_amount:,.0f} fits in your remaining ₹{remaining:,.0f}, "
+                            f"but it would use {pct_of_remaining:.0f}% of what you have left. "
+                            f"You've already spent {budget_pct:.0f}% of your ₹{budget:,.0f} budget. "
+                            f"I'd wait unless it's essential. 🤔"
+                        )
+                    else:
+                        reply = (
+                            f"✅ Yes, you can afford ₹{asked_amount:,.0f}! "
+                            f"You have ₹{remaining:,.0f} left from your ₹{budget:,.0f} budget "
+                            f"({100 - budget_pct:.0f}% remaining). "
+                            f"This would bring you to {((spent + asked_amount) / budget * 100):.0f}% used — still okay."
+                        )
+                else:
+                    short = asked_amount - remaining
+                    reply = (
+                        f"❌ Not recommended. ₹{asked_amount:,.0f} is more than your remaining budget of ₹{remaining:,.0f}. "
+                        f"You'd overspend by ₹{short:,.0f}. "
+                        f"You've already used {budget_pct:.0f}% of your ₹{budget:,.0f} budget this month."
+                    )
+            else:
+                # Generic afford check
+                if remaining > 2000:
+                    reply = f"You have ₹{remaining:,.0f} left in your budget ({100 - budget_pct:.0f}% unused). You have decent room, but mention a specific amount for a precise answer!"
+                else:
+                    reply = f"⚠️ Your budget is tight — only ₹{remaining:,.0f} left ({100 - budget_pct:.0f}% of ₹{budget:,.0f}). Be careful with purchases this month."
+
+        # ── CLOTHES / WARDROBE ────────────────────────────────────
+        elif any(w in message for w in ["clothes", "clothing", "wardrobe", "outfit", "shirt", "dress", "jacket", "jeans", "shoes", "kurta", "saree"]):
+            shopping_spent = cats.get("Shopping", 0)
+            if never_worn >= 3:
+                reply = (
+                    f"👗 Hold on — you already have {never_worn} unworn items in your wardrobe! "
+                    f"That's money not being used. "
+                    + (f"You've also spent ₹{shopping_spent:,.0f} on shopping this month. " if shopping_spent > 0 else "")
+                    + "Challenge: wear something you haven't in 30 days before buying anything new."
+                )
+            elif shopping_spent > 2000:
+                reply = (
+                    f"You've already spent ₹{shopping_spent:,.0f} on shopping this month. "
+                    f"With ₹{remaining:,.0f} left in your budget, I'd think twice before adding more. "
+                    f"Do you actually need it, or just want it right now? 😅"
+                )
+            elif remaining > asked_amount and asked_amount > 0:
+                reply = f"You have ₹{remaining:,.0f} left, so ₹{asked_amount:,.0f} on clothes is affordable. Just make sure it gets worn — {never_worn} items already sit unworn in your wardrobe!"
+            else:
+                reply = f"You have ₹{remaining:,.0f} remaining this month. If you've been eyeing something, just make sure you'll actually wear it — your wardrobe utilization can always improve! 👕"
+
+        # ── FOOD / DELIVERY ────────────────────────────────────────
+        elif any(w in message for w in ["food", "swiggy", "zomato", "delivery", "restaurant", "eating", "eat out"]):
+            food_spent = cats.get("Food", 0)
+            if food_spent > 0:
+                food_pct = (food_spent / spent * 100) if spent > 0 else 0
+                save_potential = int(food_spent * 0.3)
+                reply = (
+                    f"🍱 You've spent ₹{food_spent:,.0f} on food this month ({food_pct:.0f}% of your total). "
+                    f"Cooking at home 3 extra days/week could save you about ₹{save_potential:,}. "
+                    f"Try packing lunch on weekdays — saves ₹150–250/day easily."
+                )
+            else:
+                reply = "No food expenses logged yet this month. Start tracking your food spending to get personalised insights!"
+
+        # ── BUDGET STATUS ─────────────────────────────────────────
+        elif any(w in message for w in ["budget", "how much left", "remaining", "left", "how am i doing", "status"]):
+            if budget == 0:
+                reply = "You haven't set a monthly budget yet! Set one from your dashboard to start tracking properly."
+            elif budget_pct >= 90:
+                reply = (
+                    f"🚨 Budget critically low! You've spent ₹{spent:,.0f} ({budget_pct:.0f}%) of your ₹{budget:,.0f} budget. "
+                    f"Only ₹{remaining:,.0f} left. Avoid all non-essential spending for the rest of the month."
+                )
+            elif budget_pct >= 70:
+                reply = (
+                    f"⚠️ Budget getting tight — {budget_pct:.0f}% used (₹{spent:,.0f} of ₹{budget:,.0f}). "
+                    f"₹{remaining:,.0f} left. "
+                    + (f"Your biggest expense is {top_cat[0]} (₹{top_cat[1]:,.0f}). Try cutting that next." if top_cat else "")
+                )
+            else:
+                days_left = cal_module.monthrange(today.year, today.month)[1] - today.day
+                daily_budget = remaining / max(days_left, 1)
+                reply = (
+                    f"✅ Budget looks healthy! You've spent {budget_pct:.0f}% (₹{spent:,.0f}) of ₹{budget:,.0f}. "
+                    f"₹{remaining:,.0f} left with {days_left} days to go — about ₹{daily_budget:,.0f}/day."
+                )
+
+        # ── SPENDING ANALYSIS ─────────────────────────────────────
+        elif any(w in message for w in ["spending", "spend", "expenses", "where", "analysis", "breakdown"]):
+            if not cats:
+                reply = "No expenses logged this month yet. Start tracking to see where your money goes!"
+            else:
+                top3 = sorted(cats.items(), key=lambda x: -x[1])[:3]
+                breakdown = ", ".join(f"{c}: ₹{v:,.0f}" for c, v in top3)
+                mom_change = ((spent - last_month_spent) / last_month_spent * 100) if last_month_spent > 0 else 0
+                trend = f"📈 +{mom_change:.0f}% vs last month" if mom_change > 10 else (f"📉 {mom_change:.0f}% vs last month" if mom_change < -5 else "~same as last month")
+                reply = (
+                    f"📊 This month: ₹{spent:,.0f} total ({budget_pct:.0f}% of budget). "
+                    f"Top categories — {breakdown}. "
+                    f"Trend: {trend}."
+                )
+
+        # ── SAVINGS / HOW TO SAVE ─────────────────────────────────
+        elif any(w in message for w in ["save", "saving", "savings", "how to save", "cut", "reduce"]):
+            tips = []
+            if cats.get("Food", 0) > 2000:
+                tips.append(f"Cut food delivery by 25% → save ~₹{int(cats['Food'] * 0.25):,}/month")
+            if cats.get("Shopping", 0) > 1500:
+                tips.append(f"Pause shopping for 2 weeks → save ₹{int(cats.get('Shopping', 0)):,} this month")
+            if remaining > 0:
+                tips.append(f"Move ₹{int(remaining * 0.5):,} of your remaining budget to savings before month-end")
+            if not tips:
+                daily_save = int(remaining / max((cal_module.monthrange(today.year, today.month)[1] - today.day), 1))
+                tips.append(f"You're tracking well. Try setting a savings goal and put aside ₹{daily_save:,}/day")
+            reply = "💰 Here's how to save more this month:\n" + "\n".join(f"• {t}" for t in tips)
+
+        # ── WEEKLY SUMMARY ────────────────────────────────────────
+        elif any(w in message for w in ["week", "this week", "weekly", "past 7 days", "last 7"]):
+            if week_spent == 0:
+                reply = "No expenses in the past 7 days. Either you've been great with money, or you forgot to log! 😄"
+            else:
+                daily_avg = week_spent / 7
+                reply = (
+                    f"📅 Last 7 days: ₹{week_spent:,.0f} spent (avg ₹{daily_avg:,.0f}/day). "
+                    + (f"Your budget allows ₹{budget / 30:,.0f}/day on average. " if budget > 0 else "")
+                    + ("You're pacing well! 🟢" if budget > 0 and daily_avg <= budget / 30 else "Consider slowing down this week. 🔴" if budget > 0 else "")
+                )
+
+        # ── MOOD SPENDING ─────────────────────────────────────────
+        elif any(w in message for w in ["mood", "stress", "emotional", "sad", "happy", "impulse"]):
+            if not mood_totals:
+                reply = "No mood-tagged expenses yet! When you log an expense, select your mood to see patterns. You might discover you spend more when stressed 😤"
+            else:
+                stressed = mood_totals.get("stressed", 0)
+                happy = mood_totals.get("happy", 0)
+                total_mood = sum(mood_totals.values())
+                stress_pct = (stressed / total_mood * 100) if total_mood > 0 else 0
+                if stressed > happy and stressed > 500:
+                    reply = (
+                        f"😤 Interesting pattern: you've spent ₹{stressed:,.0f} when stressed this month "
+                        f"({stress_pct:.0f}% of mood-tagged expenses). "
+                        f"Next time you're stressed, try a 15-min walk before buying anything — it really works!"
+                    )
+                else:
+                    mood_str = ", ".join(f"{k}: ₹{v:,.0f}" for k, v in sorted(mood_totals.items(), key=lambda x: -x[1])[:3])
+                    reply = f"Your mood-linked spending: {mood_str}. Keep tagging your moods — patterns become clearer over time!"
+
+        # ── GOALS ─────────────────────────────────────────────────
+        elif any(w in message for w in ["goal", "goals", "target", "save for", "saving for"]):
+            if not goals:
+                reply = "You haven't set any savings goals yet! Go to your dashboard and create one — whether it's a trip, gadget, or emergency fund. Having a goal makes saving 3x more effective. 🎯"
+            else:
+                g = goals[0]  # Most recent goal
+                target = _f(g.get("target_amount"))
+                saved = _f(g.get("saved_amount"))
+                months_left = max(int(g.get("months") or 1), 1)
+                remaining_amt = target - saved
+                monthly_needed = remaining_amt / months_left if months_left > 0 else remaining_amt
+                daily_needed = monthly_needed / 30
+                pct_done = (saved / target * 100) if target > 0 else 0
+                reply = (
+                    f"🎯 Goal: '{g['name']}' — ₹{target:,.0f} target. "
+                    f"Progress: ₹{saved:,.0f} saved ({pct_done:.0f}%). "
+                    f"To finish in {months_left} month{'s' if months_left > 1 else ''}: "
+                    f"save ₹{monthly_needed:,.0f}/month or ₹{daily_needed:,.0f}/day."
+                )
+
+        # ── DEFAULT (smart fallback) ───────────────────────────────
+        else:
+            if budget == 0:
+                reply = "Set a monthly budget first to get personalised advice. Once you do, I can answer questions like 'can I afford X?' or 'how's my spending?'"
+            elif budget_pct >= 80:
+                reply = (
+                    f"Quick heads up: you've spent {budget_pct:.0f}% of your ₹{budget:,.0f} budget this month. "
+                    f"₹{remaining:,.0f} left. "
+                    + (f"Top spend: {top_cat[0]} (₹{top_cat[1]:,.0f}). " if top_cat else "")
+                    + "Try asking: 'Can I afford ₹X?' or 'How to save more?'"
+                )
+            else:
+                reply = (
+                    f"Budget: ₹{spent:,.0f} / ₹{budget:,.0f} used ({budget_pct:.0f}%). ₹{remaining:,.0f} remaining. "
+                    + (f"Top category: {top_cat[0]} (₹{top_cat[1]:,.0f}). " if top_cat else "")
+                    + "Ask me anything — 'Can I afford ₹2000?', 'Where am I spending most?', 'How to save?'"
+                )
+
+    except Exception as e:
+        logger.error(f"Smart chat error: {e}")
+        reply = "Something went wrong fetching your data. Make sure you have some expenses logged!"
+        ctx = {}
+
+    return jsonify({"reply": reply, "data": ctx})
+
+
+# ─────────────────────────────────────────────────────────────────────
+# FIX 2 — SAVINGS GOALS with daily/monthly calculation
+# This REPLACES the existing /api/savings-goals GET to add calculations.
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/savings-goals/calculated", methods=["GET"])
+@login_required
+def api_savings_goals_calculated():
+    """
+    Returns all savings goals with real-time calculations:
+    - remaining_amount
+    - monthly_saving_needed
+    - daily_saving_needed
+    - progress_pct
+    - on_track (bool)
+    """
+    uid = get_uid()
+    today = datetime.now()
+
+    try:
+        conn = get_db()
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM savings_goals WHERE user_id=%s ORDER BY created_at DESC",
+                (uid,),
+            )
+            raw_goals = cur.fetchall()
+
+            # Get monthly remaining budget for "on track" check
+            cur.execute("SELECT monthly_budget FROM users WHERE id=%s", (uid,))
+            u = cur.fetchone()
+            budget = _f(u["monthly_budget"] if u else 0)
+
+            cur.execute(
+                "SELECT COALESCE(SUM(amount),0) AS t FROM expenses "
+                "WHERE user_id=%s AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s",
+                (uid, today.month, today.year),
+            )
+            spent = _f(cur.fetchone()["t"])
+        conn.close()
+    except Exception as e:
+        logger.error(f"Savings goals calculated error: {e}")
+        return jsonify([])
+
+    remaining_budget = max(0.0, budget - spent)
+    goals_out = []
+
+    for g in raw_goals:
+        target = _f(g.get("target_amount"))
+        saved = _f(g.get("saved_amount"))
+        months = max(int(g.get("months") or 1), 1)
+        remaining_amt = max(0.0, target - saved)
+        progress_pct = round((saved / target * 100), 1) if target > 0 else 0
+
+        # Calculate how many months remain from creation date
+        created_at = g.get("created_at")
+        if created_at:
+            if hasattr(created_at, "year"):
+                months_elapsed = (today.year - created_at.year) * 12 + (today.month - created_at.month)
+            else:
+                months_elapsed = 0
+        else:
+            months_elapsed = 0
+
+        months_remaining = max(1, months - months_elapsed)
+        monthly_needed = round(remaining_amt / months_remaining, 2)
+        daily_needed = round(monthly_needed / 30, 2)
+
+        # Is user on track? Monthly needed vs available monthly surplus
+        monthly_surplus = remaining_budget  # This month's remaining budget
+        on_track = monthly_needed <= monthly_surplus if monthly_needed > 0 else True
+
+        goals_out.append(_safe_json({
+            **dict(g),
+            "remaining_amount": remaining_amt,
+            "monthly_saving_needed": monthly_needed,
+            "daily_saving_needed": daily_needed,
+            "progress_pct": progress_pct,
+            "months_remaining": months_remaining,
+            "on_track": on_track,
+            "tip": (
+                f"Save ₹{monthly_needed:,.0f}/month (₹{daily_needed:,.0f}/day) to hit your goal in {months_remaining} month{'s' if months_remaining > 1 else ''}."
+                if remaining_amt > 0 else "🎉 Goal achieved! You've hit your target."
+            )
+        }))
+
+    return jsonify(goals_out)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# FIX 3 — MOOD TRACKING (store + analyse)
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/mood-analytics", methods=["GET"])
+@login_required
+def api_mood_analytics():
+    """
+    Returns mood-wise spending totals + insight message.
+    Frontend: GET /api/mood-analytics
+    """
+    uid = get_uid()
+    today = datetime.now()
+
+    try:
+        conn = get_db()
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT mood, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS cnt "
+                "FROM expenses "
+                "WHERE user_id=%s AND mood IS NOT NULL AND mood != '' "
+                "AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s "
+                "GROUP BY mood ORDER BY total DESC",
+                (uid, today.month, today.year),
+            )
+            rows = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Mood analytics error: {e}")
+        return jsonify({"mood_totals": {}, "insight": "Add mood tags to see patterns.", "entries": []})
+
+    if not rows:
+        return jsonify({
+            "mood_totals": {},
+            "insight": "No mood-tagged expenses yet. Add mood to your expenses to see patterns!",
+            "entries": [],
+        })
+
+    mood_totals = {r["mood"]: _f(r["total"]) for r in rows}
+    mood_counts = {r["mood"]: int(r["cnt"]) for r in rows}
+    total_tagged = sum(mood_totals.values())
+
+    # Build insight
+    worst_mood = max(mood_totals.items(), key=lambda x: x[1])
+    best_mood = min(mood_totals.items(), key=lambda x: x[1])
+    insight = ""
+
+    if worst_mood[0] in ("stressed", "sad") and worst_mood[1] > 0:
+        pct = (worst_mood[1] / total_tagged * 100) if total_tagged > 0 else 0
+        insight = (
+            f"⚠️ You spend the most when {worst_mood[0]} — ₹{worst_mood[1]:,.0f} ({pct:.0f}% of mood-tagged). "
+            "Try a 10-min pause before buying when you're feeling this way."
+        )
+    elif worst_mood[0] == "happy":
+        insight = (
+            f"😊 You spend most when happy (₹{worst_mood[1]:,.0f}) — usually fine, just avoid impulse buys! "
+            "Your mood spending looks balanced overall."
+        )
+    elif worst_mood[0] == "excited":
+        insight = f"🤩 Excitement drives your spending (₹{worst_mood[1]:,.0f}). Sleep on purchases over ₹500 before buying."
+    else:
+        insight = f"Your mood spending data is building up. Keep tagging to see clearer patterns!"
+
+    return jsonify({
+        "mood_totals": mood_totals,
+        "mood_counts": mood_counts,
+        "insight": insight,
+        "entries": [_safe_json(dict(r)) for r in rows],
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────
+# FIX 4 — WEEKLY SUMMARY (fixed date query)
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/weekly-summary", methods=["GET"])
+@login_required
+def api_weekly_summary():
+    """
+    Returns this week vs last week spending with correct date filtering.
+    Frontend: GET /api/weekly-summary
+    """
+    uid = get_uid()
+    today = datetime.now()
+
+    # This week: last 7 days
+    this_week_start = today - timedelta(days=7)
+    # Last week: 8–14 days ago
+    last_week_start = today - timedelta(days=14)
+    last_week_end = today - timedelta(days=7)
+
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # This week total
+        cur.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS t FROM expenses "
+            "WHERE user_id=%s AND created_at >= %s",
+            (uid, this_week_start),
+        )
+        this_week_total = _f(cur.fetchone()["t"])
+
+        # Last week total
+        cur.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS t FROM expenses "
+            "WHERE user_id=%s AND created_at >= %s AND created_at < %s",
+            (uid, last_week_start, last_week_end),
+        )
+        last_week_total = _f(cur.fetchone()["t"])
+
+        # This week by category
+        cur.execute(
+            "SELECT category, COALESCE(SUM(amount), 0) AS total FROM expenses "
+            "WHERE user_id=%s AND created_at >= %s "
+            "GROUP BY category ORDER BY total DESC",
+            (uid, this_week_start),
+        )
+        this_week_cats = {r["category"]: _f(r["total"]) for r in cur.fetchall()}
+
+        # Daily breakdown for chart
+        daily = {}
+        for i in range(7):
+            d = today - timedelta(days=6 - i)
+            day_key = d.strftime("%a")
+            cur.execute(
+                "SELECT COALESCE(SUM(amount), 0) AS t FROM expenses "
+                "WHERE user_id=%s AND DATE(created_at) = %s",
+                (uid, d.date()),
+            )
+            daily[day_key] = _f(cur.fetchone()["t"])
+
+        # Budget context
+        cur.execute("SELECT monthly_budget FROM users WHERE id=%s", (uid,))
+        u = cur.fetchone()
+        budget = _f(u["monthly_budget"] if u else 0)
+        weekly_budget = budget / 4.33 if budget > 0 else 0
+
+        cur.close()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Weekly summary error: {e}")
+        return jsonify({
+            "this_week": 0, "last_week": 0, "change_pct": 0,
+            "daily": {}, "categories": {}, "weekly_budget": 0,
+            "message": f"Error: {str(e)}"
+        })
+
+    # Change calculation
+    change_pct = 0
+    if last_week_total > 0:
+        change_pct = round(((this_week_total - last_week_total) / last_week_total) * 100, 1)
+
+    daily_avg = this_week_total / 7
+
+    # Build message
+    if this_week_total == 0:
+        message = "No expenses logged in the past 7 days. Start logging to see insights!"
+    elif weekly_budget > 0 and this_week_total > weekly_budget:
+        message = f"⚠️ You've spent ₹{this_week_total:,.0f} this week — over your estimated weekly budget of ₹{weekly_budget:,.0f}."
+    elif change_pct > 20:
+        message = f"📈 Spending up {change_pct:.0f}% vs last week (₹{this_week_total:,.0f} vs ₹{last_week_total:,.0f}). What happened?"
+    elif change_pct < -10:
+        message = f"📉 Great job! You spent {abs(change_pct):.0f}% less than last week. Saved ₹{last_week_total - this_week_total:,.0f}!"
+    else:
+        message = f"Spending ₹{this_week_total:,.0f} this week (avg ₹{daily_avg:,.0f}/day). {'On track! ✅' if weekly_budget == 0 or this_week_total <= weekly_budget else 'Slightly over pace.'}"
+
+    return jsonify(_safe_json({
+        "this_week": this_week_total,
+        "last_week": last_week_total,
+        "change_pct": change_pct,
+        "daily": daily,
+        "categories": this_week_cats,
+        "weekly_budget": round(weekly_budget, 2),
+        "daily_avg": round(daily_avg, 2),
+        "message": message,
+    }))
+
+
+# ─────────────────────────────────────────────────────────────────────
+# FIX 5 — EMAIL (reads EMAIL_SENDER / EMAIL_PASSWORD correctly)
+# This is the /api/test-email fix.
+# In email_service.py the env vars are already fixed — this route
+# makes /api/test-email also callable from the old chat interface.
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/test-email", methods=["POST"])
+@login_required
+def api_test_email_direct():
+    """
+    Direct test-email endpoint that works even without email_service.py.
+    Uses EMAIL_SENDER + EMAIL_PASSWORD from .env.
+    """
+    uid = get_uid()
+    try:
+        conn = get_db()
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT name, email, monthly_budget FROM users WHERE id=%s", (uid,))
+            user = cur.fetchone()
+            if not user:
+                return jsonify({"success": False, "message": "User not found"}), 404
+
+            today = datetime.now()
+            cur.execute(
+                "SELECT COALESCE(SUM(amount),0) AS t FROM expenses "
+                "WHERE user_id=%s AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s",
+                (uid, today.month, today.year),
+            )
+            spent = _f(cur.fetchone()["t"])
+            cur.execute(
+                "SELECT category, COALESCE(SUM(amount),0) AS total FROM expenses "
+                "WHERE user_id=%s AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s "
+                "GROUP BY category ORDER BY total DESC LIMIT 5",
+                (uid, today.month, today.year),
+            )
+            cats = {r["category"]: _f(r["total"]) for r in cur.fetchall()}
+        conn.close()
+    except Exception as e:
+        return jsonify({"success": False, "message": f"DB error: {e}"}), 500
+
+    smtp_user = os.getenv("EMAIL_SENDER") or os.getenv("EMAIL_USER") or os.getenv("MAIL_USERNAME")
+    smtp_pass = os.getenv("EMAIL_PASSWORD") or os.getenv("EMAIL_PASS") or os.getenv("MAIL_PASSWORD")
+
+    if not smtp_user or not smtp_pass:
+        return jsonify({
+            "success": False,
+            "message": "Email not configured. Set EMAIL_SENDER and EMAIL_PASSWORD in your .env file.",
+            "hint": "Get a Gmail App Password at: myaccount.google.com/apppasswords"
+        }), 400
+
+    budget = _f(user["monthly_budget"])
+    budget_pct = (spent / budget * 100) if budget > 0 else 0
+    remaining = max(0.0, budget - spent)
+    first_name = user["name"].split()[0]
+    month_name = today.strftime("%B %Y")
+
+    cat_rows = "".join(
+        f"<tr><td style='padding:6px 14px;font-size:13px;color:#444;'>{c}</td>"
+        f"<td style='padding:6px 14px;font-size:13px;font-weight:700;color:#7c6fa0;text-align:right;'>₹{v:,.0f}</td></tr>"
+        for c, v in cats.items()
+    ) if cats else "<tr><td colspan='2' style='padding:12px;color:#aaa;text-align:center;font-size:12px;'>No expenses this month</td></tr>"
+
+    status_color = "#e74c3c" if budget_pct >= 90 else "#f39c12" if budget_pct >= 70 else "#27ae60"
+    status_emoji = "🚨" if budget_pct >= 90 else "⚠️" if budget_pct >= 70 else "✅"
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:20px;background:#f5f3fc;font-family:'Segoe UI',sans-serif;">
+<div style="max-width:520px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 4px 30px rgba(107,95,160,0.12);">
+  <div style="background:linear-gradient(135deg,#6b5fa0,#a89cc8);padding:30px;text-align:center;">
+    <div style="font-size:11px;color:rgba(255,255,255,0.7);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">fenora · smart finance</div>
+    <h1 style="color:#fff;margin:0;font-size:20px;font-weight:800;">Monthly Snapshot 📊</h1>
+    <p style="color:rgba(255,255,255,0.75);margin:6px 0 0;font-size:13px;">Hey {first_name}! Here's your {month_name} summary.</p>
+  </div>
+  <div style="padding:24px;">
+    <div style="background:#f8f5ff;border-left:4px solid {status_color};border-radius:10px;padding:16px 18px;margin-bottom:20px;">
+      <div style="font-size:11px;color:#888;text-transform:uppercase;font-weight:600;letter-spacing:0.5px;margin-bottom:6px;">{status_emoji} Budget Status</div>
+      <div style="font-size:26px;font-weight:800;color:#1a1a2e;">₹{spent:,.0f}</div>
+      <div style="font-size:12px;color:#666;margin-top:4px;">of ₹{budget:,.0f} budget · {budget_pct:.0f}% used · ₹{remaining:,.0f} remaining</div>
+      <div style="background:#e8e4f5;border-radius:6px;height:7px;margin-top:10px;overflow:hidden;">
+        <div style="background:{status_color};height:7px;width:{min(budget_pct,100):.0f}%;border-radius:6px;"></div>
+      </div>
+    </div>
+    <h3 style="font-size:12px;font-weight:700;color:#7c6fa0;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 10px;">💳 Where Your Money Went</h3>
+    <table style="width:100%;border-collapse:collapse;background:#faf8ff;border-radius:10px;overflow:hidden;margin-bottom:20px;">
+      <tbody>{cat_rows}</tbody>
+    </table>
+    <div style="text-align:center;">
+      <a href="http://localhost:5173" style="display:inline-block;background:linear-gradient(135deg,#6b5fa0,#a89cc8);color:#fff;padding:12px 28px;border-radius:50px;text-decoration:none;font-size:13px;font-weight:700;">Open Dashboard →</a>
+    </div>
+  </div>
+  <div style="padding:16px;text-align:center;color:#bbb;font-size:11px;">fenora · Smart Budget & Wardrobe Intelligence</div>
+</div>
+</body></html>"""
+
+    plain = f"fenora Test Email\n\nHi {first_name}!\n\nBudget: ₹{spent:,.0f} / ₹{budget:,.0f} ({budget_pct:.0f}% used)\nRemaining: ₹{remaining:,.0f}\n\n— fenora AI"
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["From"] = f"fenora AI <{smtp_user}>"
+        msg["To"] = user["email"]
+        msg["Subject"] = f"fenora: Your {month_name} Financial Snapshot 📊"
+        msg.attach(MIMEText(plain, "plain", "utf-8"))
+        msg.attach(MIMEText(html, "html", "utf-8"))
+
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_user, user["email"], msg.as_string())
+
+        logger.info(f"Test email sent to {user['email']}")
+        return jsonify({
+            "success": True,
+            "message": f"✅ Test email sent to {user['email']}! Check your inbox.",
+            "to": user["email"],
+            "subject": f"fenora: Your {month_name} Financial Snapshot 📊",
+            "insights_summary": {
+                "this_month_total": spent,
+                "budget_pct": round(budget_pct, 1),
+                "expense_insights_count": len(cats),
+                "wardrobe_insights_count": 0,
+                "recommendations_count": 1,
+            }
+        })
+
+    except smtplib.SMTPAuthenticationError:
+        return jsonify({
+            "success": False,
+            "message": "❌ Gmail authentication failed. Use a Gmail App Password (not your real password).",
+            "hint": "Get one at: myaccount.google.com/apppasswords — requires 2FA to be ON."
+        }), 400
+    except Exception as e:
+        logger.error(f"Email send error: {e}")
+        return jsonify({"success": False, "message": f"Email error: {str(e)}"}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────
+# FIX 6 — AI INSIGHTS endpoint with real data (never returns empty)
+# Enhanced /api/ai-analysis with more data + mood context
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/ai-insights-full", methods=["GET"])
+@login_required
+def api_ai_insights_full():
+    """
+    Comprehensive AI insights that never returns "Could not generate".
+    Always returns real, calculated data.
+    GET /api/ai-insights-full
+    """
+    uid = get_uid()
+    today = datetime.now()
+
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Budget
+        cur.execute("SELECT monthly_budget FROM users WHERE id=%s", (uid,))
+        u = cur.fetchone()
+        budget = _f(u["monthly_budget"] if u else 0)
+
+        # This month expenses
+        cur.execute(
+            "SELECT category, COALESCE(SUM(amount),0) AS total FROM expenses "
+            "WHERE user_id=%s AND EXTRACT(YEAR FROM created_at)=%s AND EXTRACT(MONTH FROM created_at)=%s "
+            "GROUP BY category ORDER BY total DESC",
+            (uid, today.year, today.month),
+        )
+        this_month_cats = {r["category"]: _f(r["total"]) for r in cur.fetchall()}
+        this_month_total = sum(this_month_cats.values())
+
+        # Last month
+        last_m = today.replace(day=1) - timedelta(days=1)
+        cur.execute(
+            "SELECT COALESCE(SUM(amount),0) AS t FROM expenses "
+            "WHERE user_id=%s AND EXTRACT(YEAR FROM created_at)=%s AND EXTRACT(MONTH FROM created_at)=%s",
+            (uid, last_m.year, last_m.month),
+        )
+        last_month_total = _f(cur.fetchone()["t"])
+
+        # Last 7 days
+        week_start = today - timedelta(days=7)
+        cur.execute(
+            "SELECT COALESCE(SUM(amount),0) AS t FROM expenses WHERE user_id=%s AND created_at >= %s",
+            (uid, week_start),
+        )
+        week_total = _f(cur.fetchone()["t"])
+
+        # Wardrobe
+        cur.execute("SELECT item_name, category, purchase_price, wear_count FROM wardrobe_items WHERE user_id=%s", (uid,))
+        wardrobe = cur.fetchall()
+
+        # Mood
+        cur.execute(
+            "SELECT mood, COALESCE(SUM(amount),0) AS t FROM expenses "
+            "WHERE user_id=%s AND mood IS NOT NULL AND mood != '' "
+            "AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s GROUP BY mood",
+            (uid, today.month, today.year),
+        )
+        mood_data = {r["mood"]: _f(r["t"]) for r in cur.fetchall()}
+
+        cur.close()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"AI insights full error: {e}")
+        return jsonify({
+            "expense_insights": [{"icon": "⚠️", "type": "info", "text": f"Error loading insights: {str(e)}"}],
+            "wardrobe_insights": [],
+            "recommendations": [],
+            "summary": {},
+            "mood_insight": None,
+            "weekly_context": {},
+        })
+
+    # Build insights
+    never_worn = [i for i in wardrobe if (i.get("wear_count") or 0) == 0]
+    total_wardrobe_value = sum(_f(i.get("purchase_price")) for i in wardrobe)
+    budget_pct = (this_month_total / budget * 100) if budget > 0 else 0
+    remaining = max(0.0, budget - this_month_total)
+    days_left = cal_module.monthrange(today.year, today.month)[1] - today.day
+    daily_remaining = remaining / max(days_left, 1)
+
+    expense_insights = []
+    wardrobe_insights = []
+    recommendations = []
+
+    # -- Budget insight (always show one) --
+    if budget == 0:
+        expense_insights.append({"icon": "💡", "type": "info", "text": "Set a monthly budget to start tracking how well you're managing money."})
+    elif budget_pct >= 90:
+        expense_insights.append({"icon": "🚨", "type": "danger", "text": f"You've used {budget_pct:.0f}% of your ₹{budget:,.0f} budget (₹{this_month_total:,.0f} spent). Only ₹{remaining:,.0f} left — stop non-essential spending NOW."})
+    elif budget_pct >= 70:
+        expense_insights.append({"icon": "⚠️", "type": "warning", "text": f"You've spent {budget_pct:.0f}% of your budget. ₹{remaining:,.0f} left with {days_left} days to go — about ₹{daily_remaining:,.0f}/day."})
+    elif this_month_total > 0:
+        expense_insights.append({"icon": "✅", "type": "success", "text": f"Budget on track! Spent {budget_pct:.0f}% (₹{this_month_total:,.0f}). ₹{remaining:,.0f} remaining — avg ₹{daily_remaining:,.0f}/day for {days_left} days."})
+    else:
+        expense_insights.append({"icon": "💡", "type": "info", "text": "No expenses logged this month yet. Start tracking every purchase!"})
+
+    # -- Top category --
+    if this_month_cats:
+        top_cat, top_amt = max(this_month_cats.items(), key=lambda x: x[1])
+        top_pct = (top_amt / this_month_total * 100) if this_month_total > 0 else 0
+        expense_insights.append({"icon": "📊", "type": "info", "text": f"Biggest spend: {top_cat} (₹{top_amt:,.0f}, {top_pct:.0f}% of total). " + ("Consider reducing this category." if top_pct > 40 else "Looks balanced!")})
+
+    # -- Month-over-month --
+    if last_month_total > 0 and this_month_total > 0:
+        mom = ((this_month_total - last_month_total) / last_month_total) * 100
+        if mom > 15:
+            expense_insights.append({"icon": "📈", "type": "warning", "text": f"Spending up {mom:.0f}% vs last month. You've spent ₹{this_month_total - last_month_total:,.0f} more. What's driving this?"})
+        elif mom < -10:
+            expense_insights.append({"icon": "📉", "type": "success", "text": f"Spending down {abs(mom):.0f}% vs last month! You saved ₹{last_month_total - this_month_total:,.0f}. Keep it up 🎉"})
+
+    # -- Weekly context --
+    if week_total > 0:
+        week_daily = week_total / 7
+        expense_insights.append({"icon": "📅", "type": "info", "text": f"Past 7 days: ₹{week_total:,.0f} (avg ₹{week_daily:,.0f}/day). " + ("Slightly high — consider a slower week." if budget > 0 and week_daily > budget / 30 else "Good daily pace!")})
+
+    # -- Mood insight --
+    mood_insight = None
+    if mood_data:
+        stressed = mood_data.get("stressed", 0)
+        total_mood = sum(mood_data.values())
+        if stressed > 0 and total_mood > 0:
+            stress_pct = (stressed / total_mood * 100)
+            if stress_pct > 30:
+                mood_insight = {"icon": "😤", "type": "warning", "text": f"You spent ₹{stressed:,.0f} ({stress_pct:.0f}%) of mood-tagged expenses when stressed. Pause before buying when feeling this way!"}
+            else:
+                mood_insight = {"icon": "😊", "type": "success", "text": f"Your mood spending looks healthy. Only {stress_pct:.0f}% of tagged expenses were stress-driven."}
+
+    # -- Wardrobe insights --
+    if wardrobe:
+        never_worn_val = sum(_f(i.get("purchase_price")) for i in never_worn)
+        if never_worn:
+            wardrobe_insights.append({"icon": "😴", "type": "warning", "text": f"{len(never_worn)} item{'s' if len(never_worn) > 1 else ''} never worn (₹{never_worn_val:,.0f} idle). Wear them before buying anything new."})
+        worn_items = [i for i in wardrobe if (i.get("wear_count") or 0) > 0 and _f(i.get("purchase_price")) > 0]
+        if worn_items:
+            best = min(worn_items, key=lambda i: _f(i.get("purchase_price")) / max(i.get("wear_count") or 1, 1))
+            cpw = _f(best.get("purchase_price")) / max(best.get("wear_count") or 1, 1)
+            wardrobe_insights.append({"icon": "⭐", "type": "success", "text": f"Best value: '{best['item_name']}' at ₹{cpw:.0f}/wear. That's efficiency!"})
+    else:
+        wardrobe_insights.append({"icon": "👗", "type": "info", "text": "Add items to your wardrobe to unlock clothing analytics."})
+
+    # -- Recommendations --
+    food_spend = this_month_cats.get("Food", 0)
+    if food_spend > 1500:
+        recommendations.append({"icon": "🍕", "priority": "high", "title": "Cut food delivery", "text": f"₹{food_spend:,.0f} on food. Cook at home 3x/week → save ~₹{int(food_spend*0.25):,}/month."})
+
+    shopping = this_month_cats.get("Shopping", 0)
+    if shopping > 1000 and len(never_worn) >= 2:
+        recommendations.append({"icon": "🛍️", "priority": "high", "title": "Pause shopping", "text": f"₹{shopping:,.0f} on shopping + {len(never_worn)} unworn items. Wear what you own first!"})
+
+    if budget_pct > 85:
+        recommendations.append({"icon": "🛑", "priority": "high", "title": "No-spend week", "text": f"You've used {budget_pct:.0f}% of budget. Try a 7-day no-spend challenge on non-essentials."})
+
+    if not recommendations and remaining > 500:
+        recommendations.append({"icon": "💰", "priority": "success", "title": "Save the surplus", "text": f"You have ₹{remaining:,.0f} left. Move ₹{int(remaining*0.5):,} to a savings goal before month-end!"})
+
+    return jsonify(_safe_json({
+        "expense_insights": expense_insights,
+        "wardrobe_insights": wardrobe_insights,
+        "recommendations": recommendations,
+        "mood_insight": mood_insight,
+        "summary": {
+            "this_month_total": this_month_total,
+            "last_month_total": last_month_total,
+            "budget": budget,
+            "budget_pct": round(budget_pct, 1),
+            "remaining": remaining,
+            "week_total": week_total,
+            "never_worn_count": len(never_worn),
+            "total_wardrobe_value": total_wardrobe_value,
+            "category_breakdown": this_month_cats,
+            "mood_data": mood_data,
+        },
+        "weekly_context": {
+            "total": week_total,
+            "daily_avg": round(week_total / 7, 2),
+        },
+    }))
+"""
+production_routes.py — fenora Production Routes
+=================================================
+Paste this entire file's content into app.py BEFORE the
+`from email_routes import email_bp` line.
+
+New routes added:
+  PUT  /api/wardrobe/<id>          — edit wardrobe item
+  GET  /api/expenses/calendar      — spending calendar data
+  POST /api/budget/update          — update budget (alias for /api/update-budget)
+
+SQL migrations (run once):
+─────────────────────────────────────────────────────────────
+-- Already exists but add mood if missing:
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS mood VARCHAR(20) DEFAULT NULL;
+
+-- For wardrobe edit (no migration needed — PUT uses existing columns)
+─────────────────────────────────────────────────────────────
+"""
+
+# ─────────────────────────────────────────────────────────────────────
+# WARDROBE EDIT  —  PUT /api/wardrobe/<id>
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/wardrobe/<int:wid>", methods=["PUT"])
+@login_required
+def api_wardrobe_update(wid):
+    """
+    Edit an existing wardrobe item.
+    Body: { item_name, category, color, purchase_price }
+    """
+    uid = get_uid()
+    data = request.json or {}
+    item_name = data.get("item_name", "").strip()
+    if not item_name:
+        return jsonify({"error": "Item name required"}), 400
+
+    category       = data.get("category", "Other")
+    color          = data.get("color", "")
+    purchase_price = float(data.get("purchase_price", 0) or 0)
+
+    try:
+        conn = get_db()
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE wardrobe_items "
+                "SET item_name=%s, category=%s, color=%s, purchase_price=%s "
+                "WHERE id=%s AND user_id=%s "
+                "RETURNING id",
+                (item_name, category, color, purchase_price, wid, uid),
+            )
+            row = cur.fetchone()
+        conn.close()
+        if not row:
+            return jsonify({"error": "Item not found or access denied"}), 404
+        return jsonify({"message": "Updated", "id": wid})
+    except Exception as e:
+        logger.error(f"Wardrobe update error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────
+# SPENDING CALENDAR  —  GET /api/expenses/calendar
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/expenses/calendar", methods=["GET"])
+@login_required
+def api_expenses_calendar():
+    """
+    Returns daily spending totals for a full month.
+    Query params: year (default current), month (default current, 1-based)
+
+    Response: [{ "date": "2026-04-05", "amount": 450.0 }, ...]
+    All days in the month are returned; days with no spend have amount=0.
+    """
+    uid   = get_uid()
+    today = datetime.now()
+    year  = int(request.args.get("year", today.year))
+    month = int(request.args.get("month", today.month))
+
+    # Validate
+    if not (1 <= month <= 12):
+        return jsonify({"error": "Invalid month"}), 400
+
+    import calendar as _cal
+    days_in_month = _cal.monthrange(year, month)[1]
+
+    try:
+        conn = get_db()
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT DATE(created_at) AS day, COALESCE(SUM(amount), 0) AS total "
+                "FROM expenses "
+                "WHERE user_id=%s "
+                "AND EXTRACT(YEAR FROM created_at)=%s "
+                "AND EXTRACT(MONTH FROM created_at)=%s "
+                "GROUP BY DATE(created_at)",
+                (uid, year, month),
+            )
+            rows = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Calendar error: {e}")
+        return jsonify([])
+
+    # Build full month map (every day, even zero-spend days)
+    day_map = {}
+    for r in rows:
+        day_key = r["day"].isoformat() if hasattr(r["day"], "isoformat") else str(r["day"])
+        day_map[day_key] = _f(r["total"])
+
+    result = []
+    for d in range(1, days_in_month + 1):
+        date_str = f"{year}-{month:02d}-{d:02d}"
+        result.append({
+            "date":   date_str,
+            "amount": day_map.get(date_str, 0.0),
+            "day":    d,
+        })
+
+    return jsonify(_safe_json(result))
+
+
+# ─────────────────────────────────────────────────────────────────────
+# BUDGET UPDATE ALIAS  —  PUT /api/budget/update
+# (the existing POST /api/update-budget also works; this adds REST alias)
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/budget/update", methods=["PUT", "POST"])
+@login_required
+def api_budget_update_alias():
+    """
+    Update the user's monthly budget.
+    Body: { "monthly_budget": 15000 }
+    Returns: { "message": "...", "monthly_budget": 15000 }
+    """
+    uid = get_uid()
+    data = request.json or {}
+    # Accept both field names for flexibility
+    budget = float(data.get("monthly_budget", data.get("budget", 0)) or 0)
+    if budget <= 0:
+        return jsonify({"error": "Budget must be greater than 0"}), 400
+
+    try:
+        conn = get_db()
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET monthly_budget = %s WHERE id = %s RETURNING monthly_budget",
+                (budget, uid),
+            )
+            row = cur.fetchone()
+        conn.close()
+        if not row:
+            return jsonify({"error": "User not found"}), 404
+        return jsonify({"message": f"Budget updated to ₹{budget:,.0f}", "monthly_budget": float(row[0])})
+    except Exception as e:
+        logger.error(f"Budget update alias error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+"""
+app_patch.py
+============
+INSTRUCTIONS:
+  Paste everything below the dashed line into app.py
+  BEFORE the line: `from email_routes import email_bp`
+
+  Also add this at the very top of app.py imports:
+      from chatbot_engine import handle_chat_message
+"""
+
+# ══════════════════════════════════════════════════════════════════════
+# PASTE BELOW INTO app.py  (before `from email_routes import email_bp`)
+# ══════════════════════════════════════════════════════════════════════
+
+import re as _re
+
+# ─────────────────────────────────────────────────────────────────────
+# SMART AI CHAT  (replaces /api/chat for free-text questions)
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/smart-chat", methods=["POST"])
+@login_required
+def api_smart_chat():
+    """
+    Intelligent financial chatbot.
+    Handles 15 intent types with real DB data.
+    Body: { "message": "Can I afford ₹2000?" }
+    """
+    uid  = get_uid()
+    data = request.json or {}
+    msg  = (data.get("message") or data.get("question_key") or "").strip()
+
+    try:
+        from chatbot_engine import handle_chat_message
+        result = handle_chat_message(uid, msg, get_db)
+        return jsonify(result)
+    except ImportError:
+        # Fallback: inline logic if chatbot_engine.py is not present
+        logger.warning("chatbot_engine.py not found — using inline fallback")
+        return _smart_chat_fallback(uid, msg)
+    except Exception as e:
+        logger.error(f"Smart chat error: {e}")
+        return jsonify({"reply": "Something went wrong. Try again!", "intent": "error", "data": {}})
+
+
+def _smart_chat_fallback(uid, message):
+    """Inline fallback chat handler in case chatbot_engine.py is missing."""
+    import re
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        today = datetime.now()
+
+        cur.execute("SELECT monthly_budget, name FROM users WHERE id=%s", (uid,))
+        u = cur.fetchone()
+        budget = _f(u["monthly_budget"] if u else 0)
+        name   = (u.get("name") or "there").split()[0] if u else "there"
+
+        cur.execute(
+            "SELECT COALESCE(SUM(amount),0) AS t FROM expenses "
+            "WHERE user_id=%s AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s",
+            (uid, today.month, today.year),
+        )
+        spent = _f(cur.fetchone()["t"])
+        remaining = max(0.0, budget - spent)
+        pct = (spent / budget * 100) if budget > 0 else 0
+
+        cur.execute(
+            "SELECT category, COALESCE(SUM(amount),0) AS total FROM expenses "
+            "WHERE user_id=%s AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s "
+            "GROUP BY category ORDER BY total DESC LIMIT 1",
+            (uid, today.month, today.year),
+        )
+        top = cur.fetchone()
+
+        cur.execute("SELECT COUNT(*) AS c FROM wardrobe_items WHERE user_id=%s AND wear_count=0", (uid,))
+        never_worn = int(cur.fetchone()["c"])
+        cur.close()
+        conn.close()
+
+        msg_lower = message.lower()
+
+        # Afford check with real calculation
+        if any(w in msg_lower for w in ["afford", "can i buy", "should i buy"]):
+            k = re.search(r'(\d+(?:\.\d+)?)\s*k\b', msg_lower)
+            nums = re.findall(r'\b(\d[\d,]*)\b', message)
+            amount = float(k.group(1)) * 1000 if k else (float(max(nums, key=lambda x: float(x.replace(",",""))) .replace(",", "")) if nums else 0)
+
+            if amount <= 0:
+                reply = f"You have ₹{remaining:,.0f} remaining. Tell me the amount to check if you can afford it!"
+            elif amount <= remaining:
+                pct_after = ((spent + amount) / budget * 100) if budget > 0 else 0
+                reply = f"✅ Yes, you can afford ₹{amount:,.0f}!\n\n• Remaining before: ₹{remaining:,.0f}\n• Remaining after: ₹{remaining - amount:,.0f}\n• Budget used after: {pct_after:.0f}%"
+            else:
+                reply = f"❌ Not recommended. ₹{amount:,.0f} exceeds your remaining budget of ₹{remaining:,.0f}.\n\nYou've already spent ₹{spent:,.0f} of ₹{budget:,.0f} ({pct:.0f}%)."
+
+        elif any(w in msg_lower for w in ["how much left", "remaining", "balance", "left in budget"]):
+            reply = f"💰 Budget Status:\n\n• Total: ₹{budget:,.0f}\n• Spent: ₹{spent:,.0f} ({pct:.0f}%)\n• Remaining: ₹{remaining:,.0f}"
+
+        elif any(w in msg_lower for w in ["overspend", "over budget", "too much"]):
+            if spent > budget and budget > 0:
+                reply = f"🚨 Yes — you're ₹{spent-budget:,.0f} OVER budget! Stop non-essential spending immediately."
+            elif pct >= 80:
+                reply = f"⚠️ Getting close! You've used {pct:.0f}% of your budget. Be careful this week."
+            else:
+                reply = f"✅ No, you're within budget ({pct:.0f}% used). Keep it up!"
+
+        elif any(w in msg_lower for w in ["save", "reduce", "tips", "advice"]):
+            tips = []
+            if top:
+                tips.append(f"• Cut {top['category']} (₹{_f(top['total']):,.0f}) by 20%")
+            tips.append("• Cook at home 3x/week — saves ₹800–1500/month")
+            if never_worn > 0:
+                tips.append(f"• You have {never_worn} unworn clothes — wear them before buying new")
+            if remaining > 0:
+                tips.append(f"• Move ₹{int(remaining*0.3):,} to savings before month-end")
+            reply = "💡 Savings tips:\n\n" + "\n".join(tips)
+
+        else:
+            status = "🚨 Critical" if pct >= 90 else "⚠️ Tight" if pct >= 70 else "✅ Healthy"
+            reply = (
+                f"Budget snapshot: {status}\n"
+                f"• Spent: ₹{spent:,.0f} / ₹{budget:,.0f} ({pct:.0f}%)\n"
+                f"• Remaining: ₹{remaining:,.0f}\n\n"
+                "Ask me: 'Can I afford ₹X?', 'How to save?', 'Am I overspending?'"
+            )
+
+    except Exception as e:
+        logger.error(f"Fallback chat error: {e}")
+        reply = "Something went wrong. Make sure you have expenses logged!"
+
+    return jsonify({"reply": reply, "intent": "fallback", "data": {"budget": budget if 'budget' in dir() else 0}})
+
+
+# ─────────────────────────────────────────────────────────────────────
+# IMPROVED /api/chat — also handles free-text via smart router
+# (keeps backward compatibility with existing frontend calls)
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/chat/v2", methods=["POST"])
+@login_required
+def api_chat_v2():
+    """Alias — routes to smart-chat."""
+    return api_smart_chat()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# EMAIL: IMPROVED /api/test-email with detailed error handling
+# (Overrides the version from email_routes.py)
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/test-email-v2", methods=["POST"])
+@login_required
+def api_test_email_v2():
+    """
+    Production email sender with full error details.
+    Uses EMAIL_SENDER + EMAIL_PASSWORD (port 587 + STARTTLS).
+    """
+    uid = get_uid()
+
+    # ── Fetch user data ────────────────────────────────────────────
+    try:
+        conn = get_db()
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT name, email, monthly_budget FROM users WHERE id=%s", (uid,))
+            user = cur.fetchone()
+            if not user:
+                return jsonify({"success": False, "message": "User not found"}), 404
+
+            today = datetime.now()
+            cur.execute(
+                "SELECT COALESCE(SUM(amount),0) AS t FROM expenses "
+                "WHERE user_id=%s AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s",
+                (uid, today.month, today.year),
+            )
+            spent = _f(cur.fetchone()["t"])
+
+            cur.execute(
+                "SELECT category, COALESCE(SUM(amount),0) AS total FROM expenses "
+                "WHERE user_id=%s AND EXTRACT(MONTH FROM created_at)=%s AND EXTRACT(YEAR FROM created_at)=%s "
+                "GROUP BY category ORDER BY total DESC LIMIT 5",
+                (uid, today.month, today.year),
+            )
+            categories = {r["category"]: _f(r["total"]) for r in cur.fetchall()}
+
+            cur.execute(
+                "SELECT COUNT(*) AS c FROM wardrobe_items WHERE user_id=%s AND wear_count=0",
+                (uid,),
+            )
+            never_worn = int(cur.fetchone()["c"])
+        conn.close()
+    except Exception as e:
+        logger.error(f"[test-email-v2] DB error: {e}")
+        return jsonify({"success": False, "message": f"Database error: {str(e)}"}), 500
+
+    # ── Get credentials ────────────────────────────────────────────
+    smtp_user = (
+        os.getenv("EMAIL_SENDER") or os.getenv("EMAIL_USER") or
+        os.getenv("MAIL_USERNAME") or os.getenv("SMTP_USER")
+    )
+    smtp_pass = (
+        os.getenv("EMAIL_PASSWORD") or os.getenv("EMAIL_PASS") or
+        os.getenv("MAIL_PASSWORD") or os.getenv("SMTP_PASS")
+    )
+
+    if not smtp_user or not smtp_pass:
+        return jsonify({
+            "success": False,
+            "message": "Email credentials not configured.",
+            "hint": (
+                "Add to your .env file:\n"
+                "  EMAIL_SENDER=your@gmail.com\n"
+                "  EMAIL_PASSWORD=your_app_password\n\n"
+                "Get an App Password at: myaccount.google.com/apppasswords\n"
+                "(requires 2-Step Verification to be ON)"
+            ),
+            "debug": {
+                "sender_set": bool(smtp_user),
+                "password_set": bool(smtp_pass),
+            }
+        }), 400
+
+    # Strip spaces from App Password
+    smtp_pass = smtp_pass.replace(" ", "").strip()
+
+    # ── Build email ────────────────────────────────────────────────
+    budget     = _f(user["monthly_budget"])
+    remaining  = max(0.0, budget - spent)
+    budget_pct = (spent / budget * 100) if budget > 0 else 0
+    name       = user["name"].split()[0]
+    month_name = today.strftime("%B %Y")
+
+    status_color = "#e74c3c" if budget_pct >= 90 else "#f39c12" if budget_pct >= 70 else "#27ae60"
+    status_emoji = "🚨" if budget_pct >= 90 else "⚠️" if budget_pct >= 70 else "✅"
+
+    cat_rows = "".join(
+        f"<tr><td style='padding:8px 14px;font-size:13px;color:#444;'>{c}</td>"
+        f"<td style='padding:8px 14px;font-size:13px;font-weight:700;color:#7c6fa0;text-align:right;'>₹{v:,.0f}</td></tr>"
+        for c, v in categories.items()
+    ) if categories else "<tr><td colspan='2' style='padding:12px;color:#aaa;font-size:12px;text-align:center;'>No expenses this month</td></tr>"
+
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+    html_body = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:20px;background:#f5f3fc;font-family:'Segoe UI',sans-serif;">
+<div style="max-width:520px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 4px 30px rgba(107,95,160,0.12);">
+  <div style="background:linear-gradient(135deg,#6b5fa0,#a89cc8);padding:28px;text-align:center;">
+    <div style="font-size:11px;color:rgba(255,255,255,0.7);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">fenora · smart finance</div>
+    <h1 style="color:#fff;margin:0;font-size:20px;font-weight:800;">Monthly Snapshot 📊</h1>
+    <p style="color:rgba(255,255,255,0.75);margin:6px 0 0;font-size:13px;">Hey {name}! Here's your {month_name} summary.</p>
+  </div>
+  <div style="padding:24px;">
+    <div style="background:#f8f5ff;border-left:4px solid {status_color};border-radius:10px;padding:16px 18px;margin-bottom:20px;">
+      <div style="font-size:11px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">{status_emoji} Budget Status</div>
+      <div style="font-size:26px;font-weight:800;color:#1a1a2e;">₹{spent:,.0f}</div>
+      <div style="font-size:12px;color:#666;margin-top:4px;">of ₹{budget:,.0f} budget · {budget_pct:.0f}% used · ₹{remaining:,.0f} remaining</div>
+      <div style="background:#e8e4f5;border-radius:6px;height:7px;margin-top:10px;overflow:hidden;">
+        <div style="background:{status_color};height:7px;width:{min(budget_pct, 100):.0f}%;border-radius:6px;"></div>
+      </div>
+    </div>
+    <h3 style="font-size:12px;font-weight:700;color:#7c6fa0;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 10px;">💳 Spending by Category</h3>
+    <table style="width:100%;border-collapse:collapse;background:#faf8ff;border-radius:10px;overflow:hidden;margin-bottom:20px;">
+      <tbody>{cat_rows}</tbody>
+    </table>
+    {"<div style='background:#fff8ec;border:1px solid #fde68a;border-radius:10px;padding:14px;margin-bottom:16px;'><p style='margin:0;font-size:13px;color:#92400e;'>👗 <strong>" + str(never_worn) + " item(s)</strong> never worn. Wear them before buying new!</p></div>" if never_worn > 0 else ""}
+    <div style="text-align:center;">
+      <a href="{frontend_url}" style="display:inline-block;background:linear-gradient(135deg,#6b5fa0,#a89cc8);color:#fff;padding:12px 28px;border-radius:50px;text-decoration:none;font-size:13px;font-weight:700;">Open Dashboard →</a>
+    </div>
+  </div>
+  <div style="padding:16px;text-align:center;color:#bbb;font-size:11px;">fenora · Smart Budget & Wardrobe Intelligence</div>
+</div>
+</body></html>"""
+
+    plain_body = (
+        f"fenora Financial Snapshot\n\n"
+        f"Hi {name}!\n\n"
+        f"Budget: ₹{budget:,.0f}\nSpent: ₹{spent:,.0f} ({budget_pct:.0f}%)\nRemaining: ₹{remaining:,.0f}\n\n"
+        + ("Categories:\n" + "\n".join(f"  • {c}: ₹{v:,.0f}" for c, v in categories.items()) + "\n\n" if categories else "")
+        + "— fenora AI"
+    )
+
+    subject = f"fenora: Your {month_name} Snapshot 📊"
+
+    # ── Send with STARTTLS port 587 ────────────────────────────────
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["From"]    = f"fenora AI <{smtp_user}>"
+        msg["To"]      = user["email"]
+        msg["Subject"] = subject
+        msg.attach(MIMEText(plain_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+        logger.info(f"Connecting to smtp.gmail.com:587 to send to {user['email']}")
+
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_user, user["email"], msg.as_string())
+
+        logger.info(f"✅ Email sent to {user['email']}")
+        return jsonify({
+            "success": True,
+            "message": f"✅ Email sent to {user['email']}! Check your inbox (and spam folder).",
+            "to":      user["email"],
+            "subject": subject,
+            "insights_summary": {
+                "this_month_total": spent,
+                "budget_pct": round(budget_pct, 1),
+                "expense_insights_count": len(categories),
+                "wardrobe_insights_count": 1 if never_worn > 0 else 0,
+                "recommendations_count": 1,
+            },
+        })
+
+    except smtplib.SMTPAuthenticationError as e:
+        logger.error(f"SMTP auth error: {e}")
+        return jsonify({
+            "success": False,
+            "message": "❌ Gmail authentication failed.",
+            "hint": (
+                "You MUST use a Gmail App Password — not your regular Gmail password.\n\n"
+                "Steps:\n"
+                "1. Go to myaccount.google.com\n"
+                "2. Security → 2-Step Verification (must be ON)\n"
+                "3. Security → App passwords → Create\n"
+                "4. Copy the 16-char password to EMAIL_PASSWORD in your .env\n"
+                "5. Spaces in the password are fine"
+            ),
+        }), 400
+
+    except smtplib.SMTPConnectError as e:
+        logger.error(f"SMTP connect error: {e}")
+        return jsonify({
+            "success": False,
+            "message": "❌ Could not connect to Gmail SMTP.",
+            "hint": "Check your internet connection. Port 587 may be blocked by your firewall or VPN.",
+        }), 400
+
+    except Exception as e:
+        logger.error(f"Email unexpected error: {type(e).__name__}: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"❌ {type(e).__name__}: {str(e)}",
+            "hint": "Check your backend logs for full details.",
+        }), 500
+
+
+# ─────────────────────────────────────────────────────────────────────
+# EMAIL DEBUG ENDPOINT  — GET /api/email-debug
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/email-debug", methods=["GET"])
+@login_required
+def api_email_debug():
+    """Returns email config status without exposing credentials."""
+    user  = os.getenv("EMAIL_SENDER") or os.getenv("EMAIL_USER") or os.getenv("MAIL_USERNAME") or os.getenv("SMTP_USER")
+    passw = os.getenv("EMAIL_PASSWORD") or os.getenv("EMAIL_PASS") or os.getenv("MAIL_PASSWORD") or os.getenv("SMTP_PASS")
+    return jsonify({
+        "sender_configured":   bool(user),
+        "password_configured": bool(passw),
+        "sender_preview":      (user[:3] + "***" + user[user.index("@"):]) if user and "@" in user else None,
+        "smtp_host":  "smtp.gmail.com",
+        "smtp_port":  587,
+        "method":     "STARTTLS",
+        "ready":      bool(user and passw),
+        "hint": (
+            "✅ Ready to send email!" if user and passw
+            else "⚠️ Set EMAIL_SENDER and EMAIL_PASSWORD in your .env file. Use a Gmail App Password."
+        ),
+    })
 # ─── Run ──────────────────────────────────────────────────────────
 
+from email_routes import email_bp
+app.register_blueprint(email_bp)
+
 if __name__ == "__main__":
+    from email_service import init_email_scheduler
+    init_email_scheduler(app, get_db)
     debug_mode = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     port = int(os.getenv("PORT", 5000))
     app.run(debug=debug_mode, host="0.0.0.0", port=port)

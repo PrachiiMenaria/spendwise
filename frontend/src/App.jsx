@@ -8,6 +8,7 @@ import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import FloatingChat from "./components/floatingchat";
 import "./App.css";
+import EmailSettings from "./pages/EmailSettings";
 
 export default function App() {
   const [page, setPage] = useState("landing");
@@ -46,6 +47,7 @@ export default function App() {
           {page === "wardrobe" && <Wardrobe />}
           {page === "expenses" && <Expenses />}
           {page === "insights" && <Insights />}
+          {page === "email-settings" && <EmailSettings />}
         </div>
       </main>
       <FloatingChat />
@@ -62,6 +64,7 @@ function Sidebar({ page, setPage, user, onLogout }) {
     { key: "wardrobe",  icon: WardrobeIcon, label: "Wardrobe" },
     { key: "expenses",  icon: ExpenseIcon,  label: "Expenses" },
     { key: "insights",  icon: InsightIcon,  label: "AI Insights" },
+    { key: "email-settings", icon: EmailIcon, label: "Email Settings" },
   ];
 
   const w = collapsed ? 68 : 236;
@@ -257,6 +260,15 @@ function InsightIcon({ size = 18, active }) {
     <svg width={size} height={size} viewBox="0 0 18 18" fill="none">
       <circle cx="9" cy="9" r="7.5" fill={active ? "#6b5fa0" : "#9898b8"} />
       <path d="M6 12 L8 7 L9 9 L11 5 L13 10" stroke={active ? "#fff" : "#e8e4f5"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function EmailIcon({ size = 18, active }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 18 18" fill="none">
+      <rect x="2" y="4" width="14" height="10" rx="2" fill={active ? "#6b5fa0" : "#9898b8"} />
+      <path d="M2.5 5.5 L9 9 L15.5 5.5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
