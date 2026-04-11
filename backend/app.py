@@ -45,7 +45,7 @@ def index():
     return jsonify({
         "status": "online",
         "message": "fenora API is running! 🚀",
-        "frontend": "http://localhost:5173"
+        "frontend": os.environ.get("FRONTEND_URL", "https://spendwise-beryl-six.vercel.app")
     })
 
 # ─── Utilities ────────────────────────────────────────────────────
