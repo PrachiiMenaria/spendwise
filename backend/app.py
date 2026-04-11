@@ -24,14 +24,19 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # ─── App Setup ────────────────────────────────────────────────────
 app = Flask(__name__)
 
+import os
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-123')
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
+app.config['SESSION_COOKIE_DOMAIN'] = None
 
-CORS(app, 
-     origins=["https://spendwise-beryl-six.vercel.app", "http://localhost:5173"],
-     supports_credentials=True)
+CORS(app,
+     origins=["https://spendwise-beryl-six.vercel.app",
+               "http://localhost:5173"],
+     supports_credentials=True,
+     allow_headers=["Content-Type", "Authorization"],
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -395,23 +400,25 @@ def api_forgot_password():
             )
             conn.commit()
             
-            sender = os.getenv("EMAIL_SENDER")
-            password = os.getenv("EMAIL_PASSWORD")
+            resend_key = os.getenv("RESEND_API_KEY")
             
-            if sender and password:
-                reset_link = f"{os.getenv('VITE_API_URL', 'http://localhost:5173')}/reset-password?token={token}"
-                msg = MIMEMultipart()
-                msg["From"] = sender
-                msg["To"] = email
-                msg["Subject"] = "Fenora: Password Reset Request"
+            if resend_key:
+                import resend
+                resend.api_key = resend_key
+                reset_link = f"{os.getenv('FRONTEND_URL', 'https://spendwise-beryl-six.vercel.app')}/reset-password?token={token}"
                 body = f"Hello,\n\nYou requested a password reset. Click the link below to reset your password. This link expires in 15 minutes.\n\n{reset_link}\n\nIf you did not request this, please ignore this email.\n\n- The Fenora Team"
-                msg.attach(MIMEText(body, "plain"))
                 
-                with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                    server.login(sender, password)
-                    server.send_message(msg)
+                try:
+                    resend.Emails.send({
+                        "from": "Fenora <onboarding@resend.dev>",
+                        "to": email,
+                        "subject": "Fenora: Password Reset Request",
+                        "html": body.replace('\n', '<br>')
+                    })
+                except Exception as _e:
+                    logger.error(f"Render Resend API error: {_e}")
             else:
-                logger.warning("EMAIL_SENDER or EMAIL_PASSWORD not set. Cannot send reset email.")
+                logger.warning("RESEND_API_KEY not set. Cannot send reset email.")
                 
         cur.close()
         conn.close()
@@ -663,22 +670,18 @@ def api_expenses_post():
             import threading
             def send_alert_email(to_email, level, spent_amount, monthly_budget):
                 try:
-                    sender = os.getenv("EMAIL_SENDER")
-                    pwd = os.getenv("EMAIL_PASSWORD")
-                    if not sender or not pwd: return
+                    resend_key = os.getenv("RESEND_API_KEY")
+                    if not resend_key: return
                     subj = f"⚠️ Budget Alert: {level} Limit Reached" if level != "100%" else "🚨 Budget Exceeded: 100% Limit Reached"
                     body = f"Hello,\n\nYou have hit the {level} mark of your monthly budget.\nTotal Spent this month: ₹{spent_amount:,.0f}\nMonthly Budget: ₹{monthly_budget:,.0f}\n\nReview your expenses in Fenora.\n\n- The Fenora Team"
-                    import smtplib
-                    from email.mime.text import MIMEText
-                    from email.mime.multipart import MIMEMultipart
-                    msg = MIMEMultipart()
-                    msg["From"] = sender
-                    msg["To"] = to_email
-                    msg["Subject"] = subj
-                    msg.attach(MIMEText(body, "plain"))
-                    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                        server.login(sender, pwd)
-                        server.send_message(msg)
+                    import resend
+                    resend.api_key = resend_key
+                    resend.Emails.send({
+                        "from": "Fenora <onboarding@resend.dev>",
+                        "to": to_email,
+                        "subject": subj,
+                        "html": body.replace('\n', '<br>')
+                    })
                 except Exception as e:
                     logger.error(f"Failed to send alert email: {e}")
             threading.Thread(target=send_alert_email, args=(user_email, trigger_level, new_spent, budget)).start()
