@@ -2721,23 +2721,24 @@ def api_test_email_v2():
 
     subject = f"fenora: Your {month_name} Snapshot 📊"
 
-    # ── Send with STARTTLS port 587 ────────────────────────────────
+    # ── Send via Resend SDK ────────────────────────────────────────
     try:
-        msg = MIMEMultipart("alternative")
-        msg["From"]    = f"fenora AI <{smtp_user}>"
-        msg["To"]      = user["email"]
-        msg["Subject"] = subject
-        msg.attach(MIMEText(plain_body, "plain", "utf-8"))
-        msg.attach(MIMEText(html_body, "html", "utf-8"))
+        resend_key = os.getenv("RESEND_API_KEY")
+        if not resend_key:
+            raise Exception("RESEND_API_KEY not configured on Render")
+            
+        import resend
+        resend.api_key = resend_key
 
-        logger.info(f"Connecting to smtp.gmail.com:587 to send to {user['email']}")
+        logger.info(f"Sending via Resend API to {user['email']}")
 
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(smtp_user, smtp_pass)
-            server.sendmail(smtp_user, user["email"], msg.as_string())
+        resend.Emails.send({
+            "from": "Fenora <onboarding@resend.dev>",
+            "to": [user["email"]],
+            "subject": subject,
+            "html": html_body,
+            "text": plain_body
+        })
 
         logger.info(f"✅ Email sent to {user['email']}")
         return jsonify({
@@ -2797,19 +2798,18 @@ def api_test_email_v2():
 @login_required
 def api_email_debug():
     """Returns email config status without exposing credentials."""
-    user  = os.getenv("EMAIL_SENDER") or os.getenv("EMAIL_USER") or os.getenv("MAIL_USERNAME") or os.getenv("SMTP_USER")
-    passw = os.getenv("EMAIL_PASSWORD") or os.getenv("EMAIL_PASS") or os.getenv("MAIL_PASSWORD") or os.getenv("SMTP_PASS")
+    resend_key = os.getenv("RESEND_API_KEY")
     return jsonify({
-        "sender_configured":   bool(user),
-        "password_configured": bool(passw),
-        "sender_preview":      (user[:3] + "***" + user[user.index("@"):]) if user and "@" in user else None,
-        "smtp_host":  "smtp.gmail.com",
-        "smtp_port":  587,
-        "method":     "STARTTLS",
-        "ready":      bool(user and passw),
+        "sender_configured":   bool(resend_key),
+        "password_configured": bool(resend_key),
+        "sender_preview":      "onboarding@resend.dev (Resend SDK)" if resend_key else None,
+        "smtp_host":  "api.resend.com",
+        "smtp_port":  443,
+        "method":     "HTTPS REST (Resend)",
+        "ready":      bool(resend_key),
         "hint": (
-            "✅ Ready to send email!" if user and passw
-            else "⚠️ Set EMAIL_SENDER and EMAIL_PASSWORD in your .env file. Use a Gmail App Password."
+            "✅ Ready to send email via Resend API!" if resend_key
+            else "⚠️ Set RESEND_API_KEY in your Render environment."
         ),
     })
 
