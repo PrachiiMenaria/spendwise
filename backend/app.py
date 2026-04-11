@@ -24,20 +24,14 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # ─── App Setup ────────────────────────────────────────────────────
 app = Flask(__name__)
 
-# ── Session & Cookie config — FIXES 401 on cross-origin requests ──
-app.secret_key = os.getenv("SECRET_KEY", "fenora_2026_change_in_prod")
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = False      # False for http://localhost
-app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_PATH"] = "/"
-app.config["PERMANENT_SESSION_LIFETIME"] = 86400 * 7  # 7 days
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
 
-CORS(app,
-     supports_credentials=True,
-     origins="*",
-     allow_headers=["Content-Type", "Authorization"],
-     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-)
+CORS(app, 
+     origins=["https://spendwise-beryl-six.vercel.app", "http://localhost:5173"],
+     supports_credentials=True)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
