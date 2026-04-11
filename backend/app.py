@@ -42,6 +42,10 @@ CORS(app,
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
+@app.route('/api/health')
+def health():
+    return {"status": "ok", "message": "Spendwise backend is live"}, 200
+
 @app.route("/")
 def index():
     return jsonify({
@@ -85,16 +89,150 @@ def get_db():
         port=os.getenv("DB_PORT", "5432"),
     )
 
-# Inline DB auto-migrator
-try:
-    _mig_conn = get_db()
-    with _mig_conn.cursor() as _cur:
-        pass
-    _mig_conn.commit()
-    _mig_conn.close()
-    logger.info("Auto-migrator: Ensured module columns exist.")
-except Exception as _e:
-    logger.error(f"Auto-migrator failed (safe to ignore if db not completely init): {_e}")
+def create_tables():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                email VARCHAR(150) NOT NULL UNIQUE,
+                password_hash VARCHAR(256) NOT NULL,
+                age INTEGER,
+                gender VARCHAR(20),
+                is_admin BOOLEAN DEFAULT false,
+                created_at TIMESTAMP DEFAULT now(),
+                monthly_budget DOUBLE PRECISION,
+                email_reminders_enabled BOOLEAN DEFAULT true,
+                email_frequency VARCHAR(10) DEFAULT 'monthly',
+                reset_token VARCHAR(255),
+                reset_token_expiry TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS expenses (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                amount DOUBLE PRECISION NOT NULL,
+                category VARCHAR(50) DEFAULT 'Others' NOT NULL,
+                expense_month INTEGER NOT NULL,
+                expense_year INTEGER NOT NULL,
+                note TEXT,
+                created_at TIMESTAMP DEFAULT now(),
+                mood VARCHAR(20)
+            );
+            CREATE TABLE IF NOT EXISTS budgets (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                month INTEGER NOT NULL,
+                year INTEGER NOT NULL,
+                amount DOUBLE PRECISION DEFAULT 0 NOT NULL,
+                created_at TIMESTAMP DEFAULT now(),
+                UNIQUE(user_id, month, year)
+            );
+            CREATE TABLE IF NOT EXISTS goals (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                goal_name VARCHAR(100) NOT NULL,
+                target_amount DOUBLE PRECISION NOT NULL,
+                saved_amount DOUBLE PRECISION DEFAULT 0,
+                deadline DATE,
+                created_at TIMESTAMP DEFAULT now()
+            );
+            CREATE TABLE IF NOT EXISTS savings_goals (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                name VARCHAR(200) NOT NULL,
+                target_amount NUMERIC(12,2) NOT NULL,
+                saved_amount NUMERIC(12,2) DEFAULT 0,
+                months INTEGER DEFAULT 6,
+                created_at TIMESTAMP DEFAULT now()
+            );
+            CREATE TABLE IF NOT EXISTS category_budgets (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                category VARCHAR(100) NOT NULL,
+                cap_amount NUMERIC(12,2) NOT NULL,
+                created_at TIMESTAMP DEFAULT now(),
+                UNIQUE(user_id, category)
+            );
+            CREATE TABLE IF NOT EXISTS daily_limits (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id),
+                daily_limit NUMERIC(10,2),
+                date DATE DEFAULT CURRENT_DATE
+            );
+            CREATE TABLE IF NOT EXISTS alerts (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id),
+                message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS email_log (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                subject VARCHAR(200),
+                sent_at TIMESTAMP DEFAULT now(),
+                status VARCHAR(20)
+            );
+            CREATE TABLE IF NOT EXISTS ml_predictions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                predicted_spending DOUBLE PRECISION,
+                risk_category VARCHAR(20),
+                budget_ratio DOUBLE PRECISION,
+                monthly_budget DOUBLE PRECISION,
+                alerts JSONB,
+                reminders JSONB,
+                predicted_at TIMESTAMP DEFAULT now()
+            );
+            CREATE TABLE IF NOT EXISTS survey_responses (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                wardrobe_size INTEGER,
+                average_decision_time DOUBLE PRECISION,
+                monthly_budget DOUBLE PRECISION,
+                monthly_spending DOUBLE PRECISION,
+                repeat_frequency VARCHAR(50),
+                created_at TIMESTAMP DEFAULT now()
+            );
+            CREATE TABLE IF NOT EXISTS wardrobe_items (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                item_name VARCHAR(100),
+                category VARCHAR(50),
+                color VARCHAR(50),
+                purchase_price DOUBLE PRECISION,
+                purchase_date DATE,
+                wear_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT now(),
+                purchase_month VARCHAR(10),
+                last_worn DATE,
+                tags VARCHAR(255)
+            );
+            CREATE TABLE IF NOT EXISTS outfit_decisions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                decision_time DOUBLE PRECISION,
+                date DATE DEFAULT CURRENT_DATE,
+                created_at TIMESTAMP DEFAULT now()
+            );
+            CREATE TABLE IF NOT EXISTS outfit_logs (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                items JSONB DEFAULT '[]' NOT NULL,
+                note TEXT,
+                worn_date DATE DEFAULT CURRENT_DATE,
+                created_at TIMESTAMP DEFAULT now()
+            );
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("[INFO] All tables created successfully")
+    except Exception as e:
+        print(f"[ERROR] Table creation failed: {e}")
+
+create_tables()
 
 
 def login_required(f):
