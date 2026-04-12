@@ -1,72 +1,100 @@
-# ✦ Fenora (Spendwise)
+# ✦ Fenora — Smart Living
 
-![Fenora Banner](https://via.placeholder.com/1200x400/18182e/ffffff?text=fenora+%E2%80%94+Smart+Living)
+<div align="center">
 
-Fenora is a robust, AI-powered financial and wardrobe tracking application designed to help users merge their budgeting analytics with their lifestyle. Driven by Google Gemini, Fenora analyzes your line-item expenses against your clothing wear-counts, acting as a personal stylist and financial advisor simultaneously.
+![Fenora](https://via.placeholder.com/1200x400/18182e/ffffff?text=fenora+%E2%80%94+Smart+Living)
+
+**An AI-powered personal finance & wardrobe intelligence platform**
+
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?style=for-the-badge&logo=vercel)](https://spendwise-beryl-six.vercel.app)
+[![Backend](https://img.shields.io/badge/Backend-Render-purple?style=for-the-badge&logo=render)](https://spendwise-201o.onrender.com)
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-blue?style=for-the-badge&logo=github)](https://github.com/PrachiiMenaria/spendwise)
+
+</div>
+
+---
+
+## 📖 About
+
+Fenora is a robust, AI-powered financial and wardrobe tracking application designed to help users merge their budgeting analytics with their lifestyle. Driven by **Google Gemini**, Fenora analyzes your line-item expenses against your clothing wear-counts, acting as a personal stylist and financial advisor simultaneously.
+
+---
 
 ## ✨ Features
 
-- **Smart Dashboard:** A beautifully animated, glassmorphism-inspired UI detailing your comprehensive financial standing.
-- **Wardrobe Intelligence:** Log clothing items, track your daily "wears", and automatically calculate your true Cost-Per-Wear (CPW) over time to visualize ROI.
-- **Goal Checkpoints:** Set rigid limits for categories and receive visual UI warnings when bridging margins.
-- **AI Co-Pilot:** A floating chat interface powered by Google Gemini that analyzes *your specific logged metrics* to answer conversational questions about your habits.
-- **Automated Email Analytics:** Opt-in to monthly/weekly AI-generated layout emails delivering recommendations via Brevo transactionals.
-- **True Mobile Responsiveness:** Built natively with React state sliders and scalable grids ensuring a 1:1 application feel on iOS/Android devices.
-- **Stateless JWT Security:** Mobile-first secure authentication via JSON Web Tokens for lightning-fast cross-origin validations.
+| Feature | Description |
+|---|---|
+| 🏠 **Smart Dashboard** | Beautifully animated glassmorphism UI with comprehensive financial overview |
+| 👗 **Wardrobe Intelligence** | Log clothing items, track daily wears, calculate Cost-Per-Wear (CPW) |
+| 🎯 **Budget Goals** | Set category limits and receive visual warnings when approaching margins |
+| 🤖 **AI Co-Pilot** | Floating Gemini-powered chat that analyzes your specific logged metrics |
+| 📧 **Email Analytics** | Monthly/weekly AI-generated email snapshots via Brevo |
+| 📱 **Mobile Responsive** | Native React state sliders and scalable grids for iOS/Android |
+| 🔐 **JWT Security** | Stateless mobile-first authentication via JSON Web Tokens |
+| 🔑 **Password Reset** | Secure email-based password reset flow |
+
+---
 
 ## 💻 Tech Stack
 
-**Frontend:**
-- React 19 (Vite)
-- Recharts (Data Visualizations)
-- Framer Motion
-- Custom CSS Gradients & Glassmorphism architecture
+### Frontend
+- **React 19** + Vite
+- **Recharts** — Data visualizations
+- **Framer Motion** — Animations
+- Custom CSS Gradients & Glassmorphism
 
-**Backend:**
-- Python Flask REST API
-- PostgreSQL / psycopg2
-- JSON Web Tokens (PyJWT) Auth
-- Google Generative AI (`gemini-pro`)
-- Brevo (`sib-api-v3-sdk`) Email Delivery
+### Backend
+- **Python Flask** REST API
+- **PostgreSQL** + psycopg2
+- **PyJWT** — JSON Web Token authentication
+- **Google Gemini** (`gemini-pro`) — AI insights
+- **Brevo** (`sib-api-v3-sdk`) — Email delivery
 
-**Deployment Architecture:**
-- Vercel (Frontend)
-- Render (Backend App)
-- Supabase / Neon (Database)
+### Deployment
+| Layer | Platform |
+|---|---|
+| Frontend | Vercel |
+| Backend | Render |
+| Database | Railway PostgreSQL |
+| Email | Brevo (300/day free) |
+
+---
 
 ## 🚀 Local Development Setup
 
 ### Prerequisites
-- Node.js & npm
+- Node.js 18+ & npm
 - Python 3.9+
-- PostgreSQL Database
+- PostgreSQL database
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/yourusername/spendwise.git
+git clone https://github.com/PrachiiMenaria/spendwise.git
 cd spendwise
 ```
 
-### 2. Backend Configuration
+### 2. Backend Setup
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Windows
+venv\Scripts\activate
+
+# Mac/Linux
+source venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in the `backend/` directory:
+Create `backend/.env`:
 ```env
-# Server & DB Config
 SECRET_KEY=your_super_secret_jwt_key
 DATABASE_URL=postgresql://user:password@localhost:5432/fenora
-
-# APIs
 GEMINI_API_KEY=your_google_gemini_key
 BREVO_API_KEY=your_brevo_api_key
-
-# Email Sandbox (For automated test routes)
 EMAIL_SENDER=your_verified_email@domain.com
+FRONTEND_URL=http://localhost:5173
 ```
 
 Start the Flask server:
@@ -74,31 +102,104 @@ Start the Flask server:
 flask run --port=5000
 ```
 
-### 3. Frontend Configuration
+### 3. Frontend Setup
 ```bash
 cd frontend
 npm install
 ```
 
-Create a `.env` file in the `frontend/` directory:
+Create `frontend/.env`:
 ```env
 VITE_API_URL=http://localhost:5000
 ```
 
-Start the Vite development server:
+Start the Vite dev server:
 ```bash
 npm run dev
 ```
 
+Open `http://localhost:5173` in your browser.
+
+---
+
+## 📁 Project Structure
+
+```
+spendwise/
+├── frontend/                  # React + Vite frontend
+│   ├── src/
+│   │   ├── pages/             # Dashboard, Expenses, Wardrobe, etc.
+│   │   ├── components/        # Sidebar, Charts, Cards
+│   │   ├── App.jsx            # Main app + JWT interceptor
+│   │   └── main.jsx
+│   ├── vercel.json
+│   └── vite.config.js
+│
+├── backend/                   # Flask backend
+│   ├── app.py                 # Main Flask app + all API routes
+│   ├── email_routes.py        # Email blueprint routes
+│   ├── email_service.py       # Brevo email service
+│   ├── requirements.txt
+│   └── Procfile
+```
+
+---
+
 ## 📱 Mobile Architecture
-Fenora bypasses rigid cross-origin third-party Safari/Chrome session blockers by utilizing a local-storage `Bearer` interceptor hook mounted directly to the `window.fetch` layer inside `App.jsx`. Additionally, the CSS layout collapses dynamically under `768px` via conditional state rendering, pulling the Sidebar component entirely off-canvas.
+
+Fenora bypasses cross-origin third-party cookie blockers (Safari/Chrome mobile) by using a **global `window.fetch` interceptor** mounted in `App.jsx` that:
+
+- Automatically appends `Authorization: Bearer <token>` to every API request
+- Strips legacy `credentials: "include"` from all fetch calls
+- Forces logout redirect on any `401` response
+- Stores JWT in `localStorage` for persistence across sessions
+
+The sidebar collapses off-canvas on screens under 768px via conditional React state rendering, replaced by a hamburger menu drawer.
+
+---
+
+## 🌐 Environment Variables
+
+### Render (Backend)
+| Key | Description |
+|---|---|
+| `DATABASE_URL` | Railway PostgreSQL connection string |
+| `SECRET_KEY` | JWT signing secret |
+| `GEMINI_API_KEY` | Google Gemini API key |
+| `BREVO_API_KEY` | Brevo transactional email key |
+| `EMAIL_SENDER` | Verified sender email |
+| `FRONTEND_URL` | Vercel frontend URL |
+
+### Vercel (Frontend)
+| Key | Description |
+|---|---|
+| `VITE_API_URL` | Render backend URL |
+
+---
 
 ## 🤝 Contributing
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
+
+1. Fork the project
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
+---
+
+## 👩‍💻 Developer
+
+**Prachi Menaria**
+- GitHub: [@PrachiiMenaria](https://github.com/PrachiiMenaria)
+
+---
+
 ## 📄 License
+
 Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+
+<div align="center">
+Made with ❤️ by Prachi Menaria
+</div>
