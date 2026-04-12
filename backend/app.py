@@ -403,20 +403,20 @@ def api_forgot_password():
             brevo_key = os.getenv("BREVO_API_KEY")
             
             if brevo_key:
-                import sib_api_v3_sdk
-                from sib_api_v3_sdk.rest import ApiException
-                reset_link = f"{os.getenv('FRONTEND_URL', 'https://spendwise-beryl-six.vercel.app')}/reset-password?token={token}"
-                body = f"Hello,\n\nYou requested a password reset. Click the link below to reset your password. This link expires in 15 minutes.\n\n{reset_link}\n\nIf you did not request this, please ignore this email.\n\n- The Fenora Team"
-                
                 try:
+                    import sib_api_v3_sdk
+                    from sib_api_v3_sdk.rest import ApiException
                     configuration = sib_api_v3_sdk.Configuration()
                     configuration.api_key['api-key'] = brevo_key
-                    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
+                    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
+                        sib_api_v3_sdk.ApiClient(configuration)
+                    )
+                    reset_link = f"{os.getenv('FRONTEND_URL', 'https://spendwise-beryl-six.vercel.app')}/reset-password?token={token}"
                     send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
                         to=[{"email": email}],
                         sender={"name": "Fenora", "email": "cloudberryyohh@gmail.com"},
-                        subject="Fenora: Password Reset Request",
-                        html_content=body.replace('\n', '<br>')
+                        subject="Reset Your Fenora Password",
+                        html_content=f"<p>Click here to reset: <a href='{reset_link}'>{reset_link}</a></p>"
                     )
                     api_instance.send_transac_email(send_smtp_email)
                 except Exception as _e:
