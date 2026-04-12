@@ -400,25 +400,29 @@ def api_forgot_password():
             )
             conn.commit()
             
-            resend_key = os.getenv("RESEND_API_KEY")
+            brevo_key = os.getenv("BREVO_API_KEY")
             
-            if resend_key:
-                import resend
-                resend.api_key = resend_key
+            if brevo_key:
+                import sib_api_v3_sdk
+                from sib_api_v3_sdk.rest import ApiException
                 reset_link = f"{os.getenv('FRONTEND_URL', 'https://spendwise-beryl-six.vercel.app')}/reset-password?token={token}"
                 body = f"Hello,\n\nYou requested a password reset. Click the link below to reset your password. This link expires in 15 minutes.\n\n{reset_link}\n\nIf you did not request this, please ignore this email.\n\n- The Fenora Team"
                 
                 try:
-                    resend.Emails.send({
-                        "from": "Fenora <onboarding@resend.dev>",
-                        "to": email,
-                        "subject": "Fenora: Password Reset Request",
-                        "html": body.replace('\n', '<br>')
-                    })
+                    configuration = sib_api_v3_sdk.Configuration()
+                    configuration.api_key['api-key'] = brevo_key
+                    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
+                    send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+                        to=[{"email": email}],
+                        sender={"name": "Fenora", "email": "cloudberryyohh@gmail.com"},
+                        subject="Fenora: Password Reset Request",
+                        html_content=body.replace('\n', '<br>')
+                    )
+                    api_instance.send_transac_email(send_smtp_email)
                 except Exception as _e:
-                    logger.error(f"Render Resend API error: {_e}")
+                    logger.error(f"Render Brevo API error: {_e}")
             else:
-                logger.warning("RESEND_API_KEY not set. Cannot send reset email.")
+                logger.warning("BREVO_API_KEY not set. Cannot send reset email.")
                 
         cur.close()
         conn.close()
@@ -670,18 +674,23 @@ def api_expenses_post():
             import threading
             def send_alert_email(to_email, level, spent_amount, monthly_budget):
                 try:
-                    resend_key = os.getenv("RESEND_API_KEY")
-                    if not resend_key: return
+                    brevo_key = os.getenv("BREVO_API_KEY")
+                    if not brevo_key: return
                     subj = f"⚠️ Budget Alert: {level} Limit Reached" if level != "100%" else "🚨 Budget Exceeded: 100% Limit Reached"
                     body = f"Hello,\n\nYou have hit the {level} mark of your monthly budget.\nTotal Spent this month: ₹{spent_amount:,.0f}\nMonthly Budget: ₹{monthly_budget:,.0f}\n\nReview your expenses in Fenora.\n\n- The Fenora Team"
-                    import resend
-                    resend.api_key = resend_key
-                    resend.Emails.send({
-                        "from": "Fenora <onboarding@resend.dev>",
-                        "to": to_email,
-                        "subject": subj,
-                        "html": body.replace('\n', '<br>')
-                    })
+                    
+                    import sib_api_v3_sdk
+                    from sib_api_v3_sdk.rest import ApiException
+                    configuration = sib_api_v3_sdk.Configuration()
+                    configuration.api_key['api-key'] = brevo_key
+                    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
+                    send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+                        to=[{"email": to_email}],
+                        sender={"name": "Fenora", "email": "cloudberryyohh@gmail.com"},
+                        subject=subj,
+                        html_content=body.replace('\n', '<br>')
+                    )
+                    api_instance.send_transac_email(send_smtp_email)
                 except Exception as e:
                     logger.error(f"Failed to send alert email: {e}")
             threading.Thread(target=send_alert_email, args=(user_email, trigger_level, new_spent, budget)).start()
@@ -2721,25 +2730,22 @@ def api_test_email_v2():
 
     subject = f"fenora: Your {month_name} Snapshot 📊"
 
-    # ── Send via Resend SDK ────────────────────────────────────────
+    # ── Send via Brevo SDK ────────────────────────────────────────
     try:
-        resend_key = os.getenv("RESEND_API_KEY")
-        if not resend_key:
-            raise Exception("RESEND_API_KEY not configured on Render")
-            
-        import resend
-        resend.api_key = resend_key
-
-        logger.info(f"Sending via Resend API to {user['email']}")
-
-        resend.Emails.send({
-            "from": "Fenora <onboarding@resend.dev>",
-            "to": [user["email"]],
-            "subject": subject,
-            "html": html_body,
-            "text": plain_body
-        })
-
+        import sib_api_v3_sdk
+        from sib_api_v3_sdk.rest import ApiException
+        configuration = sib_api_v3_sdk.Configuration()
+        configuration.api_key['api-key'] = os.getenv("BREVO_API_KEY")
+        api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
+            sib_api_v3_sdk.ApiClient(configuration)
+        )
+        send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+            to=[{"email": user["email"]}],
+            sender={"name": "Fenora", "email": "cloudberryyohh@gmail.com"},
+            subject=subject,
+            html_content=html_body
+        )
+        api_instance.send_transac_email(send_smtp_email)
         logger.info(f"✅ Email sent to {user['email']}")
         return jsonify({
             "success": True,
