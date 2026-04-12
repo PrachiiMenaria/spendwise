@@ -43,13 +43,51 @@
 @keyframes float2 { 0%,100%{ transform: translateY(0) rotate(1deg); } 50%{ transform: translateY(-8px) rotate(-1deg); } }
 @keyframes float3 { 0%,100%{ transform: translateY(0) rotate(-1deg); } 50%{ transform: translateY(-12px) rotate(1deg); } }
 
-/* Mobile */
+/* ── Mobile Layout Framework ── */
+.mobile-header {
+  display: none;
+  background: #ffffff;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(107,95,160,0.08);
+  justify-content: space-between;
+  align-items: center;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 45;
+  box-shadow: 0 2px 16px rgba(107,95,160,0.06);
+}
+
+.mobile-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(26,26,46,0.4);
+  backdrop-filter: blur(4px);
+  z-index: 48;
+}
+
 @media (max-width: 768px) {
+  .mobile-header {
+    display: flex;
+  }
   .app-main {
-    margin-left: 0;
+    margin-left: 0 !important;
+    padding-top: 60px; /* Space for fixed header */
+    width: 100%;
   }
   .page-content {
-    padding: 20px 16px 100px;
+    padding: 16px 16px 100px;
+  }
+  .fenora-sidebar {
+    transform: translateX(-100%);
+    width: 280px !important;
+  }
+  .fenora-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  
+  /* Text Wrapping globally for mobile readability */
+  * {
+    word-break: break-word;
   }
 }
 

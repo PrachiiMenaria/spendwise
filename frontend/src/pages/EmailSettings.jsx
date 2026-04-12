@@ -211,7 +211,7 @@ export default function EmailSettings() {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 680 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 680, width: "100%", overflowX: "hidden", paddingBottom: 40 }}>
 
       {/* ── Page header ── */}
       <div>

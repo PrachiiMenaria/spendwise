@@ -724,7 +724,7 @@ export default function Dashboard({ user }) {
       </div>
 
       {/* ── Stat Cards ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 14 }}>
+      <div className="dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 14 }}>
         {statCards.map((card, i) => (
           <div key={i} style={{ background: "#fff", borderRadius: 18, padding: "18px 18px 14px", boxShadow: "0 2px 16px rgba(124,111,160,0.07)", border: "1px solid rgba(124,111,160,0.08)", position: "relative", overflow: "hidden", animation: `fadeUp 0.4s ease both`, animationDelay: `${i * 0.07}s` }}>
             <div style={{ position: "absolute", top: 12, right: 14, fontSize: 20, opacity: 0.65 }}>{card.icon}</div>
@@ -753,7 +753,7 @@ export default function Dashboard({ user }) {
       )}
 
       {/* ── Charts Row ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+      <div className="dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
         <div style={cardStyle}>
           <SectionTitle icon="🥧" label="Expense by Category" />
           <div style={{ marginTop: 16 }}><PieChart data={expSummary?.category_totals} /></div>
@@ -765,7 +765,7 @@ export default function Dashboard({ user }) {
       </div>
 
       {/* ── Budget vs Actual + Calendar ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+      <div className="dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
         <div style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <SectionTitle icon="🎯" label="Budget vs Actual" />
@@ -782,7 +782,7 @@ export default function Dashboard({ user }) {
       </div>
 
       {/* ── Wardrobe + Goals ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+      <div className="dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
         <div style={cardStyle}>
           <SectionTitle icon="👚" label="Wardrobe Utilization" />
           <div style={{ marginTop: 16 }}>
