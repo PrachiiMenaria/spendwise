@@ -406,6 +406,11 @@ def api_forgot_password():
                 try:
                     import sib_api_v3_sdk
                     from sib_api_v3_sdk.rest import ApiException
+                except ImportError:
+                    logger.error("sib_api_v3_sdk not installed. Did you update requirements.txt?")
+                    return jsonify({"error": "Email SDK not installed on server."}), 500
+                    
+                try:
                     configuration = sib_api_v3_sdk.Configuration()
                     configuration.api_key['api-key'] = brevo_key
                     api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
@@ -418,11 +423,17 @@ def api_forgot_password():
                         subject="Reset Your Fenora Password",
                         html_content=f"<p>Click here to reset: <a href='{reset_link}'>{reset_link}</a></p>"
                     )
-                    api_instance.send_transac_email(send_smtp_email)
+                    api_response = api_instance.send_transac_email(send_smtp_email)
+                    logger.info(f"Brevo API response: {api_response}")
+                except ApiException as e:
+                    logger.error(f"Brevo ApiException Status: {e.status}, Reason: {e.reason}, Body: {e.body}")
+                    return jsonify({"error": f"Email service failure: {e.reason}", "details": e.body}), 500
                 except Exception as _e:
-                    logger.error(f"Render Brevo API error: {_e}")
+                    logger.error(f"Render Brevo API general error: {_e}")
+                    return jsonify({"error": f"Failed to send reset email: {str(_e)}"}), 500
             else:
                 logger.warning("BREVO_API_KEY not set. Cannot send reset email.")
+                return jsonify({"error": "Email service not configured (missing key)."}), 500
                 
         cur.close()
         conn.close()
