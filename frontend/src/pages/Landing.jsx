@@ -472,8 +472,26 @@ export default function Landing({ onGetStarted }) {
               <p style={{ marginTop: 20, fontSize: 12, color: "rgba(255,255,255,0.55)" }}>🔒 Private, secure, and ad-free forever.</p>
             </div>
           </div>
-        </RevealSection>
       </section>
+
+      {/* ── Footer ────────────────────────────────────────────────── */}
+      <footer style={{
+        textAlign: 'center',
+        padding: '32px 20px',
+        fontSize: '12px',
+        fontWeight: '500',
+        color: '#b0aec8',
+        letterSpacing: '0.5px',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: '8px',
+        position: 'relative',
+        zIndex: 1,
+        borderTop: '1px solid rgba(107, 95, 160, 0.08)'
+      }}>
+        crafted by <strong style={{color: '#6b5fa0', fontWeight: '800', letterSpacing: '-0.3px'}}>Prachi Menaria ✦</strong>
+      </footer>
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Playfair+Display:ital,wght@1,700&display=swap');
