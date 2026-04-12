@@ -90,9 +90,24 @@ export default function App() {
 
   if (!user) return <Login onLogin={handleLogin} onBack={() => setPage("landing")} />;
 
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
     <div className="app-shell">
-      <Sidebar page={page} setPage={setPage} user={user} onLogout={handleLogout} />
+      {/* Mobile Header (hidden on desktop via CSS) */}
+      <div className="mobile-header">
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, #6b5fa0, #9b8ec8)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13 }}>✦</div>
+          <span style={{ fontSize: 16, fontWeight: 800, color: "#18182e", letterSpacing: "-0.4px" }}>fenora</span>
+        </div>
+        <button onClick={() => setMobileMenuOpen(true)} style={{ background: "none", border: "none", fontSize: 24, color: "#6b5fa0", cursor: "pointer", display: "flex", alignItems: "center" }}>☰</button>
+      </div>
+
+      <Sidebar page={page} setPage={setPage} user={user} onLogout={handleLogout} mobileMenuOpen={mobileMenuOpen} setMobileMenuOpen={setMobileMenuOpen} />
+      
+      {/* Tap backdrop to close on mobile */}
+      {mobileMenuOpen && <div className="mobile-backdrop" onClick={() => setMobileMenuOpen(false)} />}
+
       <main className="app-main">
         <div className="page-content">
           {page === "dashboard" && <Dashboard user={user} />}
@@ -108,7 +123,7 @@ export default function App() {
 }
 
 /* ── Sidebar ─────────────────────────────────────────────────── */
-function Sidebar({ page, setPage, user, onLogout }) {
+function Sidebar({ page, setPage, user, onLogout, mobileMenuOpen, setMobileMenuOpen }) {
   const [collapsed, setCollapsed] = useState(false);
 
   const navItems = [
@@ -119,17 +134,17 @@ function Sidebar({ page, setPage, user, onLogout }) {
     { key: "email-settings", icon: EmailIcon, label: "Email Settings" },
   ];
 
-  const w = collapsed ? 68 : 236;
+  const w = collapsed && !mobileMenuOpen ? 68 : 236; // Always full width when open on mobile
 
   return (
-    <aside style={{
+    <aside className={`fenora-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`} style={{
       position: "fixed", inset: "0 auto 0 0",
       width: w, background: "#ffffff",
       borderRight: "1px solid rgba(107,95,160,0.07)",
       padding: "24px 12px 20px",
-      zIndex: 40, display: "flex", flexDirection: "column",
+      zIndex: 50, display: "flex", flexDirection: "column",
       boxShadow: "2px 0 32px rgba(107,95,160,0.07)",
-      transition: "width 0.25s cubic-bezier(0.4,0,0.2,1)",
+      transition: "all 0.25s cubic-bezier(0.4,0,0.2,1)",
       overflow: "hidden",
     }}>
       {/* Logo */}
@@ -206,7 +221,7 @@ function Sidebar({ page, setPage, user, onLogout }) {
           return (
             <button
               key={item.key}
-              onClick={() => setPage(item.key)}
+              onClick={() => { setPage(item.key); if (setMobileMenuOpen) setMobileMenuOpen(false); }}
               title={collapsed ? item.label : undefined}
               style={{
                 display: "flex", alignItems: "center",

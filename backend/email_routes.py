@@ -13,17 +13,37 @@ logger = logging.getLogger(__name__)
 email_bp = Blueprint("fenora_email", __name__)
 
 
+import os
+
 def _login_required(f):
     @wraps(f)
     def dec(*a, **kw):
-        if "user_id" not in session:
+        if request.method == "OPTIONS":
+            return f(*a, **kw)
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
             return jsonify({"error": "Unauthorized"}), 401
+        token = auth_header.split(" ")[1]
+        try:
+            import jwt
+            jwt.decode(token, os.environ.get('SECRET_KEY', 'dev-key-123'), algorithms=["HS256"])
+        except Exception as e:
+            return jsonify({"error": "Invalid or expired token"}), 401
         return f(*a, **kw)
     return dec
 
 
 def _get_uid():
-    return session.get("user_id", 1)
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        try:
+            import jwt
+            data = jwt.decode(token, os.environ.get('SECRET_KEY', 'dev-key-123'), algorithms=["HS256"])
+            return data["user_id"]
+        except:
+            pass
+    return 1
 
 
 # ── Test Email ────────────────────────────────────────────────────────
