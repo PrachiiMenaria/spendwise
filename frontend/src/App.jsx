@@ -13,6 +13,34 @@ import EmailSettings from "./pages/EmailSettings";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 
+const originalFetch = window.fetch;
+window.fetch = async function () {
+  let [resource, config] = arguments;
+  if (!config) config = {};
+  
+  const token = localStorage.getItem("sw_token");
+  if (token) {
+    config.headers = {
+      ...config.headers,
+      "Authorization": `Bearer ${token}`
+    };
+  }
+  
+  // Strip out old credentials header to avoid cross-origin cookie baggage
+  if (config.credentials) delete config.credentials;
+  
+  const response = await originalFetch(resource, config);
+  
+  // Automatically force logout if token expires or unauthorized
+  if (response.status === 401 && !resource.includes("/api/login") && !resource.includes("/api/register")) {
+    localStorage.removeItem("sw_token");
+    localStorage.removeItem("sw_user");
+    window.location.href = "/";
+  }
+  
+  return response;
+};
+
 export default function App() {
   const [page, setPage] = useState(() => {
     const path = window.location.pathname;
@@ -27,14 +55,27 @@ export default function App() {
     } catch { return null; }
   });
 
+  // Keep-alive ping for Render backend
+  useEffect(() => {
+    const keepAlive = setInterval(() => {
+      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/`)
+        .catch(() => {});
+    }, 10 * 60 * 1000); // every 10 minutes
+    return () => clearInterval(keepAlive);
+  }, []);
+
   const handleLogin = (userData) => {
     localStorage.setItem("sw_user", JSON.stringify(userData));
+    if (userData.token) {
+      localStorage.setItem("sw_token", userData.token);
+    }
     setUser(userData);
     setPage("dashboard");
   };
 
   const handleLogout = () => {
     localStorage.removeItem("sw_user");
+    localStorage.removeItem("sw_token");
     setUser(null);
     setPage("landing");
   };

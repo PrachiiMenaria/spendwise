@@ -27,7 +27,7 @@ export default function Login({ onLogin, onBack }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Something went wrong");
       const userObj = data.user || { id: data.user_id, name: data.name || form.name };
-      onLogin({ user_id: userObj.id, name: userObj.name || form.name, budget: data.budget || null });
+      onLogin({ user_id: userObj.id, name: userObj.name || form.name, budget: data.budget || null, token: data.token });
     } catch (err) {
       setError(err.message);
     } finally {

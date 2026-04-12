@@ -237,14 +237,32 @@ create_tables()
 def login_required(f):
     @wraps(f)
     def dec(*a, **kw):
-        if "user_id" not in session:
+        if request.method == "OPTIONS":
+            return f(*a, **kw)
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
             return jsonify({"error": "Unauthorized"}), 401
+        token = auth_header.split(" ")[1]
+        try:
+            import jwt
+            jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        except Exception as e:
+            return jsonify({"error": "Invalid or expired token"}), 401
         return f(*a, **kw)
     return dec
 
 
 def get_uid():
-    return session.get("user_id", 1)
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        try:
+            import jwt
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+            return data["user_id"]
+        except:
+            pass
+    return 1
 
 
 # ─── Auth ─────────────────────────────────────────────────────────
@@ -273,12 +291,17 @@ def api_register():
             )
             uid = cur.fetchone()[0]
         conn.close()
-        session.permanent = True
-        session.update(user_id=uid, user_name=name, user_email=email)
+        import jwt
+        token = jwt.encode({
+            "user_id": uid,
+            "exp": datetime.utcnow() + timedelta(days=7)
+        }, app.config["SECRET_KEY"], algorithm="HS256")
+        
         return jsonify({
             "message": f"Welcome {name}!",
             "user": {"id": uid, "name": name, "email": email},
             "user_id": uid, "name": name, "budget": budget,
+            "token": token
         })
     except psycopg2.errors.UniqueViolation:
         return jsonify({"error": "Email already registered."}), 400
@@ -300,30 +323,44 @@ def api_login():
     conn.close()
 
     if user and check_password_hash(user["password_hash"], pwd):
-        session.permanent = True
-        session.update(user_id=user["id"], user_name=user["name"], user_email=user["email"])
+        import jwt
+        token = jwt.encode({
+            "user_id": user["id"],
+            "exp": datetime.utcnow() + timedelta(days=7)
+        }, app.config["SECRET_KEY"], algorithm="HS256")
+        
         return jsonify({
             "message": f"Welcome back, {user['name']}!",
             "user": {"id": user["id"], "name": user["name"], "email": user["email"]},
             "user_id": user["id"], "name": user["name"],
             "budget": float(user.get("monthly_budget") or 0),
+            "token": token
         })
     return jsonify({"error": "Invalid email or password."}), 401
 
 
 @app.route("/api/check-auth", methods=["GET"])
 def api_check_auth():
-    if "user_id" in session:
-        return jsonify({
-            "authenticated": True,
-            "user": {"id": session["user_id"], "name": session["user_name"], "email": session["user_email"]},
-        })
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        try:
+            import jwt
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+            conn = get_db()
+            with conn.cursor() as cur:
+                cur.execute("SELECT id, name, email FROM users WHERE id=%s", (data["user_id"],))
+                u = cur.fetchone()
+            conn.close()
+            if u:
+                return jsonify({"authenticated": True, "user": {"id": u[0], "name": u[1], "email": u[2]}})
+        except:
+            pass
     return jsonify({"authenticated": False}), 401
 
 
 @app.route("/api/logout", methods=["POST"])
 def api_logout():
-    session.clear()
     return jsonify({"message": "Logged out successfully"})
 
 @app.route("/api/budget", methods=["GET"])
