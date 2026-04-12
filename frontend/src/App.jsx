@@ -120,13 +120,19 @@ export default function App() {
         {/* Footer */}
         <footer style={{
           textAlign: 'center',
-          padding: '20px',
+          padding: '24px 20px',
           marginTop: '40px',
-          fontSize: '14px',
-          color: '#888',
-          borderTop: '1px solid rgba(255,255,255,0.1)'
+          fontSize: '12px',
+          fontWeight: '500',
+          color: '#b0aec8',
+          letterSpacing: '0.5px',
+          borderTop: '1px solid rgba(107, 95, 160, 0.1)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: '8px'
         }}>
-          Made with ❤️ by <strong style={{color: '#a78bfa'}}>Prachi Menaria</strong>
+          crafted by <strong style={{color: '#6b5fa0', fontWeight: '800', letterSpacing: '-0.3px'}}>Prachi Menaria ✦</strong>
         </footer>
       </main>
       <FloatingChat />
