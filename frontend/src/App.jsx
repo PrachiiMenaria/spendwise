@@ -116,6 +116,18 @@ export default function App() {
           {page === "insights" && <Insights />}
           {page === "email-settings" && <EmailSettings />}
         </div>
+        
+        {/* Footer */}
+        <footer style={{
+          textAlign: 'center',
+          padding: '20px',
+          marginTop: '40px',
+          fontSize: '14px',
+          color: '#888',
+          borderTop: '1px solid rgba(255,255,255,0.1)'
+        }}>
+          Made with ❤️ by <strong style={{color: '#a78bfa'}}>Prachi Menaria</strong>
+        </footer>
       </main>
       <FloatingChat />
     </div>
